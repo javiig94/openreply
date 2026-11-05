@@ -10,21 +10,23 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export async function notifyHandoff({
+/** Correo a Javi con un enlace a su panel. Si falla, no rompe nada. */
+export async function sendOwnerEmail({
   to,
-  username,
-  reason,
+  subject,
+  text,
+  linkPath,
 }: {
   to: string | null;
-  username: string | null;
-  reason: string;
+  subject: string;
+  text: string;
+  linkPath: string;
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   const baseUrl = process.env.NEXTAUTH_URL ?? "";
   if (!to || !apiKey || !from) return;
 
-  const who = username ? `@${username}` : "Una persona";
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -35,8 +37,8 @@ export async function notifyHandoff({
       body: JSON.stringify({
         from,
         to,
-        subject: `${who} necesita que le conteste una persona`,
-        html: `<p>${escapeHtml(who)} necesita que le conteste una persona en Instagram.</p><p>Motivo: ${escapeHtml(reason)}</p><p><a href="${escapeHtml(baseUrl)}/assistant">Ver la conversación</a></p>`,
+        subject,
+        html: `<p>${escapeHtml(text)}</p><p><a href="${escapeHtml(baseUrl)}${escapeHtml(linkPath)}">Abrir el panel</a></p>`,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -47,4 +49,22 @@ export async function notifyHandoff({
     const message = error instanceof Error ? error.name : "desconocido";
     console.error(`[Assistant] Aviso por correo: ${message}`);
   }
+}
+
+export async function notifyHandoff({
+  to,
+  username,
+  reason,
+}: {
+  to: string | null;
+  username: string | null;
+  reason: string;
+}): Promise<void> {
+  const who = username ? `@${username}` : "Una persona";
+  await sendOwnerEmail({
+    to,
+    subject: `${who} necesita que le conteste una persona`,
+    text: `${who} necesita que le conteste una persona en Instagram. Motivo: ${reason}`,
+    linkPath: "/assistant",
+  });
 }

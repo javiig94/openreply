@@ -87,6 +87,7 @@ model Workspace {
   operationalEvents OperationalEvent[]
   serviceKeys       ServiceKey[]
   assistantSettings AssistantSettings?
+  scheduledPosts ScheduledPost[]
   assistantConversations AssistantConversation[]
 
   @@index([ownerId])
@@ -163,6 +164,7 @@ model InstagramAccount {
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
   assistantConversations AssistantConversation[]
+  scheduledPosts ScheduledPost[]
 
   @@index([workspaceId])
 }
@@ -507,4 +509,42 @@ model AssistantMessage {
 
   @@index([conversationId, createdAt])
   @@index([inReplyToId])
+}
+
+// ---- Reels programados (anadido por Javi; no existe en el proyecto original) ----
+
+enum ScheduledPostStatus {
+  SCHEDULED
+  PROCESSING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+  UNCONFIRMED
+}
+
+model ScheduledPost {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  instagramAccountId String
+  videoFile          String
+  caption            String              @default("")
+  shareToFeed        Boolean             @default(true)
+  scheduledAt        DateTime
+  status             ScheduledPostStatus @default(SCHEDULED)
+  attempts           Int                 @default(0)
+  containerId        String?
+  containerCreatedAt DateTime?
+  mediaId            String?
+  permalink          String?
+  errorMessage       String?
+  publishedAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([workspaceId, scheduledAt])
 }

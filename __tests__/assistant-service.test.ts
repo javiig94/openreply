@@ -239,6 +239,40 @@ describe("un fallo del asistente no rompe las campañas", () => {
   });
 });
 
+describe("quién contesta a un mensaje", () => {
+  const dueno = (over: Record<string, unknown>) => {
+    mockPrisma.assistantConversation.findUnique.mockResolvedValue({
+      status: "ACTIVE",
+      replyCount: 0,
+      lastUserMessageAt: new Date(),
+      messages: [],
+      ...over,
+    });
+    return assistantOwnsConversation("ig1", "u1");
+  };
+
+  it("sin conversación previa, la campaña", async () => {
+    mockPrisma.assistantConversation.findUnique.mockResolvedValue(null);
+    await expect(assistantOwnsConversation("ig1", "u1")).resolves.toBe(false);
+    await expect(dueno({})).resolves.toBe(false);
+  });
+
+  it("tras recibir la guía o hablar con el asistente, el asistente", async () => {
+    await expect(dueno({ messages: [{ id: "a" }] })).resolves.toBe(true);
+    await expect(dueno({ replyCount: 2 })).resolves.toBe(true);
+  });
+
+  it("fuera de las 24 h, o si no está activa, la campaña", async () => {
+    await expect(
+      dueno({
+        replyCount: 2,
+        lastUserMessageAt: new Date(Date.now() - 25 * 3_600_000),
+      })
+    ).resolves.toBe(false);
+    await expect(dueno({ replyCount: 2, status: "HANDED_OFF" })).resolves.toBe(false);
+  });
+});
+
 describe("mensaje entrante", () => {
   const entrada = (handledByCampaign = false) =>
     assistantOnInboundMessage({

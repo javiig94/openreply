@@ -3,6 +3,7 @@ import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
 import { purgeOldAssistantData } from "@/lib/assistant/service";
+import { publishDuePosts } from "@/lib/publishing/service";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -48,6 +49,20 @@ async function poll() {
 // Kick off one sweep shortly after boot, then on a fixed interval.
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+// Reels programados: una vuelta por minuto, y nunca dos a la vez.
+let publishing = false;
+const publishTimer = setInterval(() => {
+  if (publishing) return;
+  publishing = true;
+  void publishDuePosts()
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("[DM Worker] Publishing failed:", message);
+    })
+    .finally(() => {
+      publishing = false;
+    });
+}, 60_000);
 // Las conversaciones del asistente no se guardan para siempre.
 const purgeTimer = setInterval(
   () =>
@@ -63,6 +78,7 @@ async function shutdown(signal: string) {
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
   clearInterval(purgeTimer);
+  clearInterval(publishTimer);
   await worker.close();
   process.exit(0);
 }

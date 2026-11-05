@@ -92,7 +92,10 @@ function windowIsOpen(lastUserMessageAt: Date | null): boolean {
   );
 }
 
-/** Conversacion en marcha: el asistente ya ha hablado y la persona sigue dentro. */
+/**
+ * Conversacion en marcha: ya recibio la campana o ya hablo con el asistente, y sigue
+ * dentro de las 24 h. Asi "de cero, gracias por la guia" no vuelve a disparar la campana.
+ */
 export async function assistantOwnsConversation(
   instagramId: string,
   igUserId: string
@@ -107,11 +110,20 @@ export async function assistantOwnsConversation(
           igUserId,
         },
       },
-      select: { status: true, replyCount: true, lastUserMessageAt: true },
+      select: {
+        status: true,
+        replyCount: true,
+        lastUserMessageAt: true,
+        messages: {
+          where: { role: "AUTOMATION" },
+          take: 1,
+          select: { id: true },
+        },
+      },
     });
     return (
       conversation?.status === "ACTIVE" &&
-      conversation.replyCount > 0 &&
+      (conversation.replyCount > 0 || conversation.messages.length > 0) &&
       windowIsOpen(conversation.lastUserMessageAt)
     );
   } catch (error) {

@@ -414,6 +414,78 @@ export async function sendDirectMessage(
 }
 
 /**
+ * Primer paso para publicar un reel: Instagram descarga el video de esa direccion
+ * publica y lo procesa. Todavia no se publica nada.
+ */
+export async function createReelContainer(
+  accessToken: string,
+  instagramAccountId: string,
+  reel: { videoUrl: string; caption: string; shareToFeed: boolean }
+): Promise<{ id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/media`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        media_type: "REELS",
+        video_url: reel.videoUrl,
+        caption: reel.caption,
+        share_to_feed: reel.shareToFeed,
+      }),
+    }
+  );
+  return handleResponse(response);
+}
+
+/** FINISHED, IN_PROGRESS, ERROR, EXPIRED o PUBLISHED. */
+export async function getContainerStatus(
+  accessToken: string,
+  containerId: string
+): Promise<{ status_code?: string; status?: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${containerId}?fields=status_code,status`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return handleResponse(response);
+}
+
+/** Segundo paso: publica de verdad. Quien lo llama no debe reintentarlo a ciegas. */
+export async function publishContainer(
+  accessToken: string,
+  instagramAccountId: string,
+  containerId: string
+): Promise<{ id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/media_publish`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ creation_id: containerId }),
+    }
+  );
+  return handleResponse(response);
+}
+
+export async function getMediaPermalink(
+  accessToken: string,
+  mediaId: string
+): Promise<string | null> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${mediaId}?fields=permalink`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await handleResponse<{ permalink?: string }>(response);
+  return data.permalink ?? null;
+}
+
+/**
  * Marca el mensaje como visto o muestra "escribiendo...". Es un adorno: quien lo
  * llama debe ignorar los fallos.
  */
