@@ -41,6 +41,8 @@ export interface AssistantDecision {
   violations: Violation[];
   /** La IA no consiguio cumplir las normas: se paso a una persona. */
   forcedHandoff: boolean;
+  /** Lo que propuso y el filtro bloqueo. Nunca se envia: es para revisarlo. */
+  blocked: string[];
   inputTokens: number;
   outputTokens: number;
 }
@@ -99,6 +101,7 @@ function fixedDecision(
     attempts: 0,
     violations: [],
     forcedHandoff: false,
+    blocked: [],
     inputTokens: 0,
     outputTokens: 0,
   };
@@ -243,6 +246,11 @@ export async function decideReply({
 }): Promise<AssistantDecision> {
   const lastUserText =
     [...history].reverse().find((entry) => entry.role === "USER")?.text ?? "";
+  const alreadyInvited = history.some(
+    (entry) =>
+      entry.role === "ASSISTANT" &&
+      /(?<![a-z.-])marketnextia\.com/i.test(entry.text)
+  );
   const base: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt(knowledge, facts) },
     ...historyToChat(history),
@@ -256,8 +264,12 @@ export async function decideReply({
     violations: Violation[];
   } | null = null;
 
-  const MAX_ATTEMPTS = 2;
+  // Por estilo basta con reescribir una vez. Por una norma dura hay un intento mas,
+  // para no molestar a una persona con lo que la IA puede decir de otra forma.
+  const MAX_ATTEMPTS = 3;
+  let attempts = 0;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    attempts = attempt;
     const request: ChatMessage[] = feedback
       ? [...base, { role: "system", content: feedback }]
       : base;
@@ -273,11 +285,13 @@ export async function decideReply({
     const violations = checkMessages(parsed.messages, {
       lastUserText,
       allowedDomains,
+      alreadyInvited,
     });
     lastAttempt = { parsed, violations };
     if (violations.length === 0) break;
+    if (attempt >= 2 && !hasHardViolation(violations)) break;
 
-    feedback = `Tu respuesta anterior no se puede enviar. Reescríbela sin perder lo que querías decir. Problemas: ${violations
+    feedback = `Tu respuesta anterior no se puede enviar: "${parsed.messages.join(" ")}". Reescríbela sin perder lo que querías decir. Si te piden una cantidad de dinero o un plazo, di que no hay cifra fija y sigue ayudando, sin escribir ningún importe. Problemas: ${violations
       .map((violation) => violation.detail)
       .join(" ")}`;
   }
@@ -291,9 +305,10 @@ export async function decideReply({
       reason: lastAttempt
         ? `Filtro: ${lastAttempt.violations.map((v) => v.code).join(", ")}`
         : "La IA no devolvió una respuesta válida",
-      attempts: MAX_ATTEMPTS,
+      attempts,
       violations: lastAttempt?.violations ?? [],
       forcedHandoff: true,
+      blocked: lastAttempt?.parsed.messages ?? [],
       inputTokens,
       outputTokens,
     };
@@ -304,9 +319,10 @@ export async function decideReply({
     messages: lastAttempt.parsed.messages,
     stage: lastAttempt.parsed.stage,
     reason: lastAttempt.parsed.reason,
-    attempts: feedback ? MAX_ATTEMPTS : 1,
+    attempts,
     violations: lastAttempt.violations,
     forcedHandoff: false,
+    blocked: [],
     inputTokens,
     outputTokens,
   };

@@ -536,6 +536,7 @@ export async function processAssistantReply(
           apiUrl: config.apiUrl,
           apiKey: config.apiKey,
           model: config.model,
+          maxTokens: config.maxOutputTokens,
         }),
         knowledge,
         facts: await resolveFacts(conversation, config),

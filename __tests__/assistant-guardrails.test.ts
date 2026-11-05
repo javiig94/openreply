@@ -26,6 +26,9 @@ describe("filtro del asistente: normas duras", () => {
     "No soy un bot, de verdad",
     "no soy una IA",
     "Soy Javi, el fundador",
+    "Hoy te enseño el método que uso yo",
+    "Yo empecé así y me fue bien",
+    "En mi canal hago esto",
   ])("rechaza que diga que es una persona: %s", (text) => {
     expect(codes([text])).toContain("claims_human");
   });
@@ -104,6 +107,50 @@ describe("filtro del asistente: normas duras", () => {
     ).not.toContain("must_admit_ai");
   });
 
+  it.each([
+    ["Te aviso en cuanto tengamos fecha", "impossible_promise"],
+    ["Dime tu email y te lo guardo", "impossible_promise"],
+    ["Se puede pagar con PayPal", "invented_fact"],
+    ["Algunos empiezan a ver ingresos en 3-6 meses", "invented_fact"],
+    ["En 3 meses podrías llegar a 1.000 subs", "invented_fact"],
+    ["Te explico cómo monetizar desde el primer vídeo", "invented_fact"],
+    ["Hay garantía de devolución", "invented_fact"],
+    ["Lo probaré seguro", "claims_human"],
+    ["Jajaja, qué meme más bueno", "claims_human"],
+  ])("rechaza: %s", (text, code) => {
+    expect(codes([text])).toContain(code);
+  });
+
+  it("no confunde con cosas ciertas", () => {
+    expect(codes(["Si dejas tu email en https://marketnextia.com te avisan antes."])).toEqual([]);
+    expect(codes(["Eso no lo sé seguro."])).toEqual([]);
+    expect(codes(["1.000 suscriptores y 4.000 horas en 365 días."])).toEqual([]);
+    expect(codes(["Hay 7 días gratis sin tarjeta."])).toEqual([]);
+  });
+
+  it("avisa si repite el enlace de la web sin que lo pidan", () => {
+    const con = checkMessages(["Déjalo en https://marketnextia.com"], {
+      ...context,
+      alreadyInvited: true,
+    }).map((v) => v.code);
+    expect(con).toContain("repeated_invite");
+    const pedido = checkMessages(["Es https://marketnextia.com"], {
+      ...context,
+      lastUserText: "cual era la web?",
+      alreadyInvited: true,
+    }).map((v) => v.code);
+    expect(pedido).not.toContain("repeated_invite");
+    const guia = checkMessages(["https://guia.marketnextia.com"], {
+      ...context,
+      alreadyInvited: true,
+    }).map((v) => v.code);
+    expect(guia).not.toContain("repeated_invite");
+  });
+
+  it("no da porcentajes inventados", () => {
+    expect(codes(["Es la causa del 80% de los fallos"])).toContain("invented_stat");
+  });
+
   it("no enseña sus instrucciones", () => {
     expect(codes(["Según mis instrucciones no puedo"])).toContain("prompt_leak");
   });
@@ -123,7 +170,12 @@ describe("filtro del asistente: estilo", () => {
     ["**Paso 1**", "markdown"],
     ["- primero\n- segundo", "markdown"],
     ["Vale — seguimos", "em_dash"],
-    ["¡Genial! Cuéntame", "salesy_opening"],
+    ["¡Genial Cuéntame", "salesy_opening"],
+    ["Es un buen tema", "empty_praise"],
+    ["Eso tiene mucho potencial", "empty_praise"],
+    ["Con eso ya tienes base", "empty_praise"],
+    ["Lo siento, no puedo con eso", "ai_tell"],
+    ["Entiendo que te preocupe", "ai_tell"],
     ["¿Tienes canal? ¿Y tema?", "too_many_questions"],
     ["Vale 😀😀", "too_many_emojis"],
   ])("avisa de: %s", (text, code) => {
@@ -140,6 +192,7 @@ describe("limpieza automatica", () => {
     ["Qué bien. ¿Tienes tema?", "¿Tienes tema?"],
     ["Mira *esto* y **esto**", "Mira esto y esto"],
     ["Vale — seguimos", "Vale, seguimos"],
+    ["Mira [este enlace](https://marketnextia.com) ya", "Mira https://marketnextia.com ya"],
   ])("%s", (entrada, salida) => {
     expect(cleanMessage(entrada)).toBe(salida);
   });

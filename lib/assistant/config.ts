@@ -11,6 +11,7 @@ export interface AssistantConfig {
   apiUrl: string;
   apiKey: string;
   model: string;
+  maxOutputTokens: number;
   knowledgeDir: string;
   maxRepliesPerConversation: number;
   maxRepliesPerDay: number;
@@ -39,7 +40,8 @@ export function getAssistantConfig(
     apiUrl:
       env.ASSISTANT_API_URL ?? "https://api.mistral.ai/v1/chat/completions",
     apiKey: env.ASSISTANT_API_KEY ?? "",
-    model: env.ASSISTANT_MODEL ?? "ministral-14b-latest",
+    model: env.ASSISTANT_MODEL ?? "mistral-large-4",
+    maxOutputTokens: intFromEnv(env.ASSISTANT_MAX_OUTPUT_TOKENS, 1500),
     knowledgeDir:
       env.ASSISTANT_KNOWLEDGE_DIR ?? path.join(process.cwd(), "asistente"),
     maxRepliesPerConversation: intFromEnv(env.ASSISTANT_MAX_REPLIES, 12),

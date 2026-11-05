@@ -30,6 +30,7 @@ const { values } = parseArgs({
     solo: { type: "string" },
     max: { type: "string" },
     paralelo: { type: "string", default: "2" },
+    "max-tokens": { type: "string", default: "400" },
   },
 });
 
@@ -62,7 +63,7 @@ function personaPrompt(persona: Persona): string {
 Quién eres: ${persona.quien}
 Qué quieres en esta conversación: ${persona.objetivo}
 
-Cómo escribes: mensajes muy cortos, como en el móvil, con faltas o sin tildes si encaja. Una o dos frases como mucho. No hagas de asistente ni ayudes a la otra parte. Reacciona a lo que te dice. Si ya tienes lo que querías o te cansas, escribe solo: FIN`;
+Cómo escribes: mensajes muy cortos, como en el móvil, con faltas o sin tildes si encaja. Una o dos frases como mucho. Eres la persona que pregunta: nunca ayudes, ni recomiendes, ni te disculpes, ni digas que no puedes hacer algo, y nunca escribas lo que diría la otra parte. Reacciona a lo que te dice. Si ya tienes lo que querías o te cansas, escribe solo: FIN`;
 }
 
 function asPersonaChat(history: HistoryEntry[]) {
@@ -133,6 +134,7 @@ async function runConversation(
       motivo: decision.reason,
       intentos: decision.attempts,
       forzado: decision.forcedHandoff,
+      bloqueado: decision.blocked,
       fijo: Boolean(fixed),
       avisos: decision.violations.map((violation) => violation.code),
     });
@@ -190,6 +192,7 @@ async function main() {
       "https://api.mistral.ai/v1/chat/completions",
     apiKey: assistantKey,
     model: values.modelo as string,
+    maxTokens: Number(values["max-tokens"]),
   });
   const personaChat = createChat({
     apiUrl:

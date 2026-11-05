@@ -66,7 +66,11 @@ describe("decideReply", () => {
 
   it("pasa a una persona si la norma dura sigue incumplida: nada de la IA sale", async () => {
     const decision = await decideReply({
-      chat: respuestas(json(["Vas a ganar 1.000 €"]), json(["Ganarás 2.000 €"])),
+      chat: respuestas(
+        json(["Vas a ganar 1.000 €"]),
+        json(["Ganarás 2.000 €"]),
+        json(["Son 3.000 €"])
+      ),
       knowledge,
       facts,
       history,
@@ -75,6 +79,7 @@ describe("decideReply", () => {
     expect(decision.action).toBe("pasar_a_persona");
     expect(decision.forcedHandoff).toBe(true);
     expect(decision.messages).toEqual([HANDOFF_TEXT]);
+    expect(decision.blocked).toEqual(["Son 3.000 €"]);
   });
 
   it("envía igualmente si solo queda un fallo de estilo", async () => {
@@ -92,7 +97,7 @@ describe("decideReply", () => {
 
   it("pasa a una persona si la IA nunca devuelve un JSON válido", async () => {
     const decision = await decideReply({
-      chat: respuestas("no es json", "tampoco"),
+      chat: respuestas("no es json", "tampoco", "nada"),
       knowledge,
       facts,
       history,
@@ -103,7 +108,11 @@ describe("decideReply", () => {
 
   it("obliga a admitir que es una IA en la conversación real", async () => {
     const decision = await decideReply({
-      chat: respuestas(json(["Claro, dime."]), json(["Dime qué necesitas."])),
+      chat: respuestas(
+        json(["Claro, dime."]),
+        json(["Dime qué necesitas."]),
+        json(["Cuéntame."])
+      ),
       knowledge,
       facts,
       history: [{ role: "USER", text: "oye, ¿eres un bot?" }],

@@ -19,11 +19,13 @@ export interface GuardrailContext {
   allowedDomains: string[];
   /** Importes que si se pueden decir, escritos solo con cifras: "39,99". */
   allowedAmounts?: string[];
+  /** Ya salio el enlace de la web en esta conversacion. */
+  alreadyInvited?: boolean;
 }
 
 const DEFAULT_ALLOWED_AMOUNTS = ["39,99", "39.99"];
-const MAX_MESSAGE_CHARS = 600;
-const STYLE_MESSAGE_CHARS = 320;
+const MAX_MESSAGE_CHARS = 500;
+const STYLE_MESSAGE_CHARS = 280;
 const MAX_MESSAGES = 2;
 
 const CLAIMS_HUMAN: RegExp[] = [
@@ -31,7 +33,38 @@ const CLAIMS_HUMAN: RegExp[] = [
   /\bno\s+soy\s+(un\s+|una\s+)?(bot|robot|ia|m[aá]quina|inteligencia artificial|asistente|programa)\b/i,
   /\bsoy\s+javi\b/i,
   /\bte\s+escribe\s+javi\b/i,
+  // Una vida propia tambien es hacerse pasar por persona.
+  /\b(que|lo|la)\s+uso\s+yo\b/i,
+  /\byo\s+(uso|hago|hice|tengo|empec[eé]|gan[eé]|monet[ií]c[eé])(?![a-záéíóúñ])/i,
+  /\ben\s+mi\s+(canal|caso|experiencia)\b/i,
+  /\bmi\s+(canal|experiencia)\b/i,
+  /\ba\s+m[ií]\s+me\s+(funcion|fue|sirvi)/i,
+  /\blo\s+probar[eé](?![a-z])/i,
+  /\bqu[eé]\s+(meme|v[ií]deo|foto)\s+m[aá]s\b/i,
 ];
+
+// Promesas de cosas que el asistente no puede hacer.
+const IMPOSSIBLE_PROMISES: RegExp[] = [
+  /\bte\s+(aviso|avisar[eé]|apunto|apuntar[eé]|he\s+(apuntado|a[nñ]adido))(?![a-záéíóúñ])/i,
+  /\bte\s+lo\s+guardo\b/i,
+  /\bdime\s+tu\s+(e-?mail|correo)\b/i,
+];
+
+const INVENTED_FACTS: RegExp[] = [
+  /\bpaypal\b/i,
+  /\bdesde\s+el\s+primer\s+v[ií]deo\b/i,
+  /\bgarant[ií]a\s+de\s+devoluci[oó]n\b/i,
+  /\ben\s+\d+(\s*[-–a]\s*\d+)?\s+(d[ií]as|semanas|meses)\s+(podr[ií]as|puedes|llegas|llegar[aá]s|empiezan?)\b/i,
+  /\bempiezan?\s+a\s+(ver\s+)?(ingresos|ganar|cobrar)\s+en\s+\d/i,
+  /\b\d+(\s*[-–a]\s*\d+)?\s+meses\b.{0,30}\b(ingresos|ganar|cobrar|monetiz)/i,
+];
+
+// Valorar lo que la persona hace sin datos: el "buen tema" automatico.
+const EMPTY_PRAISE =
+  /\b(buen|gran)\s+tema\b|\bmucha\s+demanda\b|\bmucho\s+potencial\b|\bcon\s+futuro\b|\bya\s+(tienes\s+base|est[aá]s\s+cerca)\b/i;
+
+// Nada de porcentajes: en lo que sabe el asistente no hay ninguno.
+const PERCENTAGE = /\d[\d.,]*\s*%/;
 
 const INCOME_PROMISES: RegExp[] = [
   /\b(vas|vais|van)\s+a\s+(ganar|cobrar|facturar|vivir\s+de)\b/i,
@@ -78,6 +111,11 @@ const AI_TELLS: RegExp[] = [
   /es\s+importante\s+(destacar|se[nñ]alar|tener\s+en\s+cuenta)/i,
   /te\s+animo\s+a/i,
   /sin\s+duda/i,
+  /entiendo\s+que\b/i,
+  /lo\s+siento,?\s+(pero\s+)?no\s+puedo/i,
+  /quieres\s+que\s+profundic/i,
+  /dise[nñ]ad[oa]\s+para/i,
+  /\bvale,\s+perfecto\b/i,
   /aqu[ií]\s+tienes\s+algunos/i,
   /d[eé]jame\s+(explicarte|contarte)/i,
   /perm[ií]teme/i,
@@ -130,6 +168,8 @@ const LEADING_PRAISE =
  */
 export function cleanMessage(message: string): string {
   const cleaned = message
+    // Instagram no pinta los enlaces con formato: se deja la direccion tal cual.
+    .replace(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, "$1")
     .replace(/\*\*?([^*\n]+)\*\*?/g, "$1")
     .replace(/\s*—\s*/g, ", ")
     .replace(LEADING_PRAISE, "")
@@ -196,6 +236,33 @@ export function checkMessages(
       add("prompt_leak", "hard", "Habla de sus instrucciones internas.");
       break;
     }
+  }
+
+  for (const pattern of IMPOSSIBLE_PROMISES) {
+    if (pattern.test(joined)) {
+      add("impossible_promise", "hard", "Promete algo que no puedes hacer: avisar o guardar el email. Dile que deje el email en la web.");
+      break;
+    }
+  }
+  for (const pattern of INVENTED_FACTS) {
+    if (pattern.test(joined)) {
+      add("invented_fact", "hard", "Afirma algo que no sabes o da un plazo. Quítalo.");
+      break;
+    }
+  }
+  if (EMPTY_PRAISE.test(joined)) {
+    add("empty_praise", "style", "No valores su tema ni su progreso: empieza por lo útil.");
+  }
+  if (
+    context.alreadyInvited &&
+    /(?<![a-z.-])marketnextia\.com/i.test(joined) &&
+    !/\b(enlace|link|web|d[oó]nde|apunt|email|correo)/i.test(context.lastUserText)
+  ) {
+    add("repeated_invite", "style", "Ya has dejado el enlace de la web: no lo repitas.");
+  }
+
+  if (PERCENTAGE.test(joined)) {
+    add("invented_stat", "hard", "Da un porcentaje: no hay ninguno que se pueda citar.");
   }
 
   for (const match of joined.matchAll(MONEY)) {

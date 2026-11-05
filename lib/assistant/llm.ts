@@ -4,7 +4,7 @@
  */
 import type { ChatFn, ChatMessage, ChatResult } from "./engine";
 
-const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 90_000;
 const RETRY_WAITS_MS = [3_000, 8_000];
 
 export class AssistantLlmError extends Error {
@@ -21,7 +21,7 @@ export function createChat({
   apiUrl,
   apiKey,
   model,
-  temperature = 0.6,
+  temperature = 0.4,
   maxTokens = 400,
   jsonMode = true,
   retryWaitsMs = RETRY_WAITS_MS,
