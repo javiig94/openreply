@@ -19,6 +19,7 @@ import {
 import { isConfirmedSendRejection } from "@/lib/instagram/delivery-errors";
 import {
   createReelContainer,
+  type TrialGraduation,
   getContainerStatus,
   getMediaPermalink,
   publishContainer,
@@ -43,6 +44,7 @@ export interface PublishingConfig {
   baseUrl: string;
   maxPerDay: number;
   notifyEmail: string | null;
+  aiLabel: boolean;
 }
 
 export function getPublishingConfig(
@@ -57,7 +59,13 @@ export function getPublishingConfig(
       env.ASSISTANT_NOTIFY_EMAIL ??
       (env.ALLOWED_EMAILS ?? "").split(",")[0]?.trim() ??
       null,
+    // Las voces de estos reels son sinteticas y suenan reales: Meta pide declararlo.
+    aiLabel: env.PUBLISH_AI_LABEL !== "false",
   };
+}
+
+export function isTrialGraduation(value: unknown): value is TrialGraduation {
+  return value === "MANUAL" || value === "SS_PERFORMANCE";
 }
 
 /** Evita salir de la carpeta y nombres que rompan la direccion del video. */
@@ -101,6 +109,7 @@ export type ScheduleInput = {
   caption: string;
   scheduledAt: Date;
   shareToFeed: boolean;
+  trialGraduation: TrialGraduation | null;
 };
 
 /** Comprueba lo que llega del panel. Devuelve el motivo si no vale. */
@@ -121,6 +130,11 @@ export function validateSchedule(
   if ((caption.match(/#/g) ?? []).length > HASHTAGS_MAX) {
     return { ok: false, error: `Instagram admite ${HASHTAGS_MAX} hashtags como máximo.` };
   }
+  const trial = data.trialGraduation;
+  const wantsTrial = trial !== undefined && trial !== null && trial !== "";
+  if (wantsTrial && !isTrialGraduation(trial)) {
+    return { ok: false, error: "Ese tipo de trial reel no existe." };
+  }
   const scheduledAt = new Date(String(data.scheduledAt ?? ""));
   if (Number.isNaN(scheduledAt.getTime())) {
     return { ok: false, error: "Falta la fecha." };
@@ -135,6 +149,7 @@ export function validateSchedule(
       caption,
       scheduledAt,
       shareToFeed: data.shareToFeed !== false,
+      trialGraduation: isTrialGraduation(trial) ? trial : null,
     },
   };
 }
@@ -218,6 +233,13 @@ async function startPost(
     if (!head.ok) {
       throw new Error(`El vídeo no se puede abrir en ${videoUrl} (${head.status}).`);
     }
+    // Si junto al video hay una imagen con el mismo nombre, es su portada.
+    const coverUrl = videoUrlFor(config.baseUrl, post.videoFile.replace(/\.mp4$/, ".jpg"));
+    const cover = await fetch(coverUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(30_000),
+    }).catch(() => null);
+    const hasCover = Boolean(cover?.ok && cover.headers.get("content-type")?.startsWith("image/"));
     const container = await createReelContainer(
       accessToken,
       post.instagramAccount.instagramId,
@@ -225,6 +247,11 @@ async function startPost(
         videoUrl,
         caption: post.caption,
         shareToFeed: post.shareToFeed,
+        trialGraduation: isTrialGraduation(post.trialGraduation)
+          ? post.trialGraduation
+          : null,
+        coverUrl: hasCover ? coverUrl : null,
+        isAiGenerated: config.aiLabel,
       }
     );
     await prisma.scheduledPost.updateMany({

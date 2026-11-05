@@ -27,6 +27,7 @@ interface Post {
   videoFile: string;
   caption: string;
   scheduledAt: string;
+  trialGraduation: string | null;
   status: Status;
   permalink: string | null;
   errorMessage: string | null;
@@ -64,6 +65,7 @@ export default function PublishingPage() {
   const [videoFile, setVideoFile] = useState("");
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
+  const [trial, setTrial] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch("/api/publishing");
@@ -100,6 +102,7 @@ export default function PublishingPage() {
         caption,
         // La fecha se escribe en la hora del navegador de Javi.
         scheduledAt: when ? new Date(when).toISOString() : "",
+        trialGraduation: trial,
       }),
     });
     submitting.current = false;
@@ -114,6 +117,7 @@ export default function PublishingPage() {
     setVideoFile("");
     setCaption("");
     setWhen("");
+    setTrial("");
     await load();
   }
 
@@ -189,6 +193,22 @@ export default function PublishingPage() {
                 required
               />
             </label>
+            <label className="block text-sm font-semibold">
+              Cómo se publica
+              <select
+                value={trial}
+                onChange={(event) => setTrial(event.target.value)}
+                className={inputClass}
+              >
+                <option value="">Reel normal: lo ven tus seguidores y más gente</option>
+                <option value="SS_PERFORMANCE">
+                  Trial reel: solo quien no te sigue; si funciona, pasa solo a tus seguidores
+                </option>
+                <option value="MANUAL">
+                  Trial reel: solo quien no te sigue; lo pasas tú desde Instagram
+                </option>
+              </select>
+            </label>
             {formError && <p className="text-sm text-red-500">{formError}</p>}
             <button
               type="submit"
@@ -233,6 +253,7 @@ export default function PublishingPage() {
                   timeStyle: "short",
                 })}{" "}
                 · @{post.instagramAccount.username}
+                {post.trialGraduation ? " · Trial reel" : ""}
               </p>
               {post.errorMessage && (
                 <p className="mt-1 text-xs text-red-500">{post.errorMessage}</p>

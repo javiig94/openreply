@@ -100,6 +100,49 @@ afterEach(() => {
 });
 
 describe("empezar", () => {
+  it("publica como trial reel lo que se programó así", async () => {
+    enCola(post({ trialGraduation: "SS_PERFORMANCE" }));
+    await publishDuePosts(NOW);
+    expect(mockMeta.createReelContainer).toHaveBeenCalledWith("token", "ig1",
+      expect.objectContaining({ trialGraduation: "SS_PERFORMANCE" })
+    );
+  });
+
+  it("usa la portada si hay una imagen con el mismo nombre", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      new Response(null, {
+        status: 200,
+        headers: { "content-type": url.endsWith(".jpg") ? "image/jpeg" : "video/mp4" },
+      })
+    ));
+    enCola(post());
+    await publishDuePosts(NOW);
+    expect(mockMeta.createReelContainer).toHaveBeenCalledWith("token", "ig1",
+      expect.objectContaining({ coverUrl: "https://guia.example.com/reels/A.jpg" })
+    );
+  });
+
+  it("ignora una página que no sea una imagen como portada", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(null, { status: 200, headers: { "content-type": "text/html" } })
+    ));
+    enCola(post());
+    await publishDuePosts(NOW);
+    expect(mockMeta.createReelContainer).toHaveBeenCalledWith("token", "ig1",
+      expect.objectContaining({ coverUrl: null })
+    );
+  });
+
+  it("permite apagar la etiqueta de IA desde la configuración", async () => {
+    process.env.PUBLISH_AI_LABEL = "false";
+    enCola(post());
+    await publishDuePosts(NOW);
+    delete process.env.PUBLISH_AI_LABEL;
+    expect(mockMeta.createReelContainer).toHaveBeenCalledWith("token", "ig1",
+      expect.objectContaining({ isAiGenerated: false })
+    );
+  });
+
   it("crea el contenedor con la dirección pública y no publica todavía", async () => {
     enCola(post());
     await publishDuePosts(NOW);
@@ -107,6 +150,9 @@ describe("empezar", () => {
       videoUrl: "https://guia.example.com/reels/A.mp4",
       caption: "texto",
       shareToFeed: true,
+      trialGraduation: null,
+      coverUrl: null,
+      isAiGenerated: true,
     });
     expect(mockMeta.publishContainer).not.toHaveBeenCalled();
     const guardado = mockPrisma.scheduledPost.updateMany.mock.calls.find(
@@ -344,14 +390,24 @@ describe("datos del panel", () => {
     );
     expect(resultado).toMatchObject({
       ok: true,
-      value: { caption: "hola", shareToFeed: true },
+      value: { caption: "hola", shareToFeed: true, trialGraduation: null },
     });
+  });
+
+  it("acepta un trial reel", () => {
+    const resultado = validateSchedule(
+      { videoFile: "A.mp4", scheduledAt: futuro, trialGraduation: "MANUAL" },
+      disponibles,
+      NOW
+    );
+    expect(resultado).toMatchObject({ ok: true, value: { trialGraduation: "MANUAL" } });
   });
 
   it.each([
     ["vídeo que no existe", { videoFile: "B.mp4", scheduledAt: futuro }],
     ["salir de la carpeta", { videoFile: "../secreto.mp4", scheduledAt: futuro }],
     ["sin fecha", { videoFile: "A.mp4" }],
+    ["trial reel inventado", { videoFile: "A.mp4", scheduledAt: futuro, trialGraduation: "OTRO" }],
     ["fecha pasada", { videoFile: "A.mp4", scheduledAt: "2026-11-01T00:00:00Z" }],
     ["texto larguísimo", { videoFile: "A.mp4", scheduledAt: futuro, caption: "x".repeat(2201) }],
     ["demasiados hashtags", { videoFile: "A.mp4", scheduledAt: futuro, caption: "#a ".repeat(31) }],

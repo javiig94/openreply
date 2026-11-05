@@ -44,6 +44,40 @@ describe("llamadas a Instagram para publicar", () => {
     expect((opciones.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 
+  it("un trial reel lleva sus parámetros y no se comparte en el perfil", async () => {
+    const fetchMock = responde({ id: "c2" });
+    await createReelContainer("tok", "ig1", {
+      videoUrl: "https://x/b.mp4",
+      caption: "hola",
+      shareToFeed: true,
+      trialGraduation: "SS_PERFORMANCE",
+    });
+    const [, opciones] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(opciones.body as string)).toEqual({
+      media_type: "REELS",
+      video_url: "https://x/b.mp4",
+      caption: "hola",
+      trial_params: { graduation_strategy: "SS_PERFORMANCE" },
+    });
+  });
+
+  it("añade la portada y la etiqueta de IA cuando toca", async () => {
+    const fetchMock = responde({ id: "c3" });
+    await createReelContainer("tok", "ig1", {
+      videoUrl: "https://x/c.mp4",
+      caption: "",
+      shareToFeed: true,
+      coverUrl: "https://x/c.jpg",
+      isAiGenerated: true,
+    });
+    const [, opciones] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(opciones.body as string)).toMatchObject({
+      cover_url: "https://x/c.jpg",
+      is_ai_generated: true,
+      share_to_feed: true,
+    });
+  });
+
   it("pregunta el estado del contenedor", async () => {
     const fetchMock = responde({ status_code: "FINISHED" });
     await expect(getContainerStatus("tok", "c1")).resolves.toEqual({

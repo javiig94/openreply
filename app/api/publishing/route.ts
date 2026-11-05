@@ -32,6 +32,7 @@ export async function GET() {
         videoFile: true,
         caption: true,
         scheduledAt: true,
+        trialGraduation: true,
         status: true,
         permalink: true,
         errorMessage: true,

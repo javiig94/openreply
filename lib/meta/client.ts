@@ -416,13 +416,26 @@ export async function sendDirectMessage(
 const PUBLISH_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Trial reel: solo lo ve gente que no sigue la cuenta.
+ * MANUAL: se pasa a los seguidores desde la app. SS_PERFORMANCE: pasa solo si funciona.
+ */
+export type TrialGraduation = "MANUAL" | "SS_PERFORMANCE";
+
+/**
  * Primer paso para publicar un reel: Instagram descarga el video de esa direccion
  * publica y lo procesa. Todavia no se publica nada.
  */
 export async function createReelContainer(
   accessToken: string,
   instagramAccountId: string,
-  reel: { videoUrl: string; caption: string; shareToFeed: boolean }
+  reel: {
+    videoUrl: string;
+    caption: string;
+    shareToFeed: boolean;
+    trialGraduation?: TrialGraduation | null;
+    coverUrl?: string | null;
+    isAiGenerated?: boolean;
+  }
 ): Promise<{ id: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${instagramAccountId}/media`,
@@ -436,7 +449,12 @@ export async function createReelContainer(
         media_type: "REELS",
         video_url: reel.videoUrl,
         caption: reel.caption,
-        share_to_feed: reel.shareToFeed,
+        // Un trial reel solo llega a quien no sigue la cuenta: no se comparte en el perfil.
+        ...(reel.trialGraduation
+          ? { trial_params: { graduation_strategy: reel.trialGraduation } }
+          : { share_to_feed: reel.shareToFeed }),
+        ...(reel.coverUrl ? { cover_url: reel.coverUrl } : {}),
+        ...(reel.isAiGenerated ? { is_ai_generated: true } : {}),
       }),
       signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
     }

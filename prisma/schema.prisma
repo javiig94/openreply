@@ -530,6 +530,7 @@ model ScheduledPost {
   videoFile          String
   caption            String              @default("")
   shareToFeed        Boolean             @default(true)
+  trialGraduation    String?
   scheduledAt        DateTime
   status             ScheduledPostStatus @default(SCHEDULED)
   attempts           Int                 @default(0)
