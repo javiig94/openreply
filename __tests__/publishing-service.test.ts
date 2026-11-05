@@ -100,6 +100,14 @@ afterEach(() => {
 });
 
 describe("empezar", () => {
+  it("publica como historia lo que se programó así", async () => {
+    enCola(post({ mediaKind: "STORY" }));
+    await publishDuePosts(NOW);
+    expect(mockMeta.createReelContainer).toHaveBeenCalledWith("token", "ig1",
+      expect.objectContaining({ isStory: true })
+    );
+  });
+
   it("publica como trial reel lo que se programó así", async () => {
     enCola(post({ trialGraduation: "SS_PERFORMANCE" }));
     await publishDuePosts(NOW);
@@ -153,6 +161,7 @@ describe("empezar", () => {
       trialGraduation: null,
       coverUrl: null,
       isAiGenerated: true,
+      isStory: false,
     });
     expect(mockMeta.publishContainer).not.toHaveBeenCalled();
     const guardado = mockPrisma.scheduledPost.updateMany.mock.calls.find(
@@ -390,8 +399,17 @@ describe("datos del panel", () => {
     );
     expect(resultado).toMatchObject({
       ok: true,
-      value: { caption: "hola", shareToFeed: true, trialGraduation: null },
+      value: { caption: "hola", shareToFeed: true, trialGraduation: null, mediaKind: "REEL" },
     });
+  });
+
+  it("acepta una historia", () => {
+    const resultado = validateSchedule(
+      { videoFile: "A.mp4", scheduledAt: futuro, mediaKind: "STORY" },
+      disponibles,
+      NOW
+    );
+    expect(resultado).toMatchObject({ ok: true, value: { mediaKind: "STORY" } });
   });
 
   it("acepta un trial reel", () => {
@@ -407,6 +425,7 @@ describe("datos del panel", () => {
     ["vídeo que no existe", { videoFile: "B.mp4", scheduledAt: futuro }],
     ["salir de la carpeta", { videoFile: "../secreto.mp4", scheduledAt: futuro }],
     ["sin fecha", { videoFile: "A.mp4" }],
+    ["historia y trial a la vez", { videoFile: "A.mp4", scheduledAt: futuro, mediaKind: "STORY", trialGraduation: "MANUAL" }],
     ["trial reel inventado", { videoFile: "A.mp4", scheduledAt: futuro, trialGraduation: "OTRO" }],
     ["fecha pasada", { videoFile: "A.mp4", scheduledAt: "2026-11-01T00:00:00Z" }],
     ["texto larguísimo", { videoFile: "A.mp4", scheduledAt: futuro, caption: "x".repeat(2201) }],

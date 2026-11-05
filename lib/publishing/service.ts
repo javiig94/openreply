@@ -110,6 +110,7 @@ export type ScheduleInput = {
   scheduledAt: Date;
   shareToFeed: boolean;
   trialGraduation: TrialGraduation | null;
+  mediaKind: "REEL" | "STORY";
 };
 
 /** Comprueba lo que llega del panel. Devuelve el motivo si no vale. */
@@ -135,6 +136,10 @@ export function validateSchedule(
   if (wantsTrial && !isTrialGraduation(trial)) {
     return { ok: false, error: "Ese tipo de trial reel no existe." };
   }
+  const isStory = data.mediaKind === "STORY";
+  if (isStory && wantsTrial) {
+    return { ok: false, error: "Una historia no puede ser un trial reel." };
+  }
   const scheduledAt = new Date(String(data.scheduledAt ?? ""));
   if (Number.isNaN(scheduledAt.getTime())) {
     return { ok: false, error: "Falta la fecha." };
@@ -150,6 +155,7 @@ export function validateSchedule(
       scheduledAt,
       shareToFeed: data.shareToFeed !== false,
       trialGraduation: isTrialGraduation(trial) ? trial : null,
+      mediaKind: isStory ? "STORY" : "REEL",
     },
   };
 }
@@ -252,6 +258,7 @@ async function startPost(
           : null,
         coverUrl: hasCover ? coverUrl : null,
         isAiGenerated: config.aiLabel,
+        isStory: post.mediaKind === "STORY",
       }
     );
     await prisma.scheduledPost.updateMany({

@@ -28,6 +28,7 @@ interface Post {
   caption: string;
   scheduledAt: string;
   trialGraduation: string | null;
+  mediaKind: string;
   status: Status;
   permalink: string | null;
   errorMessage: string | null;
@@ -102,7 +103,8 @@ export default function PublishingPage() {
         caption,
         // La fecha se escribe en la hora del navegador de Javi.
         scheduledAt: when ? new Date(when).toISOString() : "",
-        trialGraduation: trial,
+        trialGraduation: trial === "STORY" ? "" : trial,
+        mediaKind: trial === "STORY" ? "STORY" : "REEL",
       }),
     });
     submitting.current = false;
@@ -207,6 +209,7 @@ export default function PublishingPage() {
                 <option value="MANUAL">
                   Trial reel: solo quien no te sigue; lo pasas tú desde Instagram
                 </option>
+                <option value="STORY">Historia: dura 24 horas y no lleva texto</option>
               </select>
             </label>
             {formError && <p className="text-sm text-red-500">{formError}</p>}
@@ -254,6 +257,7 @@ export default function PublishingPage() {
                 })}{" "}
                 · @{post.instagramAccount.username}
                 {post.trialGraduation ? " · Trial reel" : ""}
+                {post.mediaKind === "STORY" ? " · Historia" : ""}
               </p>
               {post.errorMessage && (
                 <p className="mt-1 text-xs text-red-500">{post.errorMessage}</p>

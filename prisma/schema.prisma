@@ -531,6 +531,7 @@ model ScheduledPost {
   caption            String              @default("")
   shareToFeed        Boolean             @default(true)
   trialGraduation    String?
+  mediaKind          String              @default("REEL")
   scheduledAt        DateTime
   status             ScheduledPostStatus @default(SCHEDULED)
   attempts           Int                 @default(0)

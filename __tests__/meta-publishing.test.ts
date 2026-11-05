@@ -61,6 +61,22 @@ describe("llamadas a Instagram para publicar", () => {
     });
   });
 
+  it("una historia solo manda el vídeo", async () => {
+    const fetchMock = responde({ id: "c4" });
+    await createReelContainer("tok", "ig1", {
+      videoUrl: "https://x/h.mp4",
+      caption: "no debe ir",
+      shareToFeed: true,
+      coverUrl: "https://x/h.jpg",
+      isStory: true,
+    });
+    const [, opciones] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(opciones.body as string)).toEqual({
+      media_type: "STORIES",
+      video_url: "https://x/h.mp4",
+    });
+  });
+
   it("añade la portada y la etiqueta de IA cuando toca", async () => {
     const fetchMock = responde({ id: "c3" });
     await createReelContainer("tok", "ig1", {

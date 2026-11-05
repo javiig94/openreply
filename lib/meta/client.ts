@@ -435,6 +435,7 @@ export async function createReelContainer(
     trialGraduation?: TrialGraduation | null;
     coverUrl?: string | null;
     isAiGenerated?: boolean;
+    isStory?: boolean;
   }
 ): Promise<{ id: string }> {
   const response = await fetch(
@@ -446,14 +447,19 @@ export async function createReelContainer(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        media_type: "REELS",
+        media_type: reel.isStory ? "STORIES" : "REELS",
         video_url: reel.videoUrl,
-        caption: reel.caption,
-        // Un trial reel solo llega a quien no sigue la cuenta: no se comparte en el perfil.
-        ...(reel.trialGraduation
-          ? { trial_params: { graduation_strategy: reel.trialGraduation } }
-          : { share_to_feed: reel.shareToFeed }),
-        ...(reel.coverUrl ? { cover_url: reel.coverUrl } : {}),
+        // Una historia no lleva texto, portada ni reparto: solo el video.
+        ...(reel.isStory
+          ? {}
+          : {
+              caption: reel.caption,
+              // Un trial reel solo llega a quien no sigue la cuenta: no se comparte en el perfil.
+              ...(reel.trialGraduation
+                ? { trial_params: { graduation_strategy: reel.trialGraduation } }
+                : { share_to_feed: reel.shareToFeed }),
+              ...(reel.coverUrl ? { cover_url: reel.coverUrl } : {}),
+            }),
         ...(reel.isAiGenerated ? { is_ai_generated: true } : {}),
       }),
       signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),

@@ -33,6 +33,7 @@ export async function GET() {
         caption: true,
         scheduledAt: true,
         trialGraduation: true,
+        mediaKind: true,
         status: true,
         permalink: true,
         errorMessage: true,
