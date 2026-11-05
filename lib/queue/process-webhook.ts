@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/client';
-import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
-import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
+import { ASSISTANT_ECHO_JOB_NAME, getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
+import { parseCommentEvents, parseEchoEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -126,6 +126,21 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           data: { workspaceId: account.workspaceId },
         });
       }
+    }
+
+    // Lo que sale de la cuenta: si no lo envio el sistema, el asistente se aparta.
+    for (const event of parseEchoEvents(
+      payload as Parameters<typeof parseEchoEvents>[0]
+    )) {
+      if (!accountMap.get(event.instagramAccountId)) continue;
+      // No ocupa historial de la cola y, si falla, no frena lo que viene detras.
+      await queue
+        .add(ASSISTANT_ECHO_JOB_NAME, event, {
+          jobId: `assistant_echo_${Buffer.from(event.messageId).toString("base64url")}`,
+          removeOnComplete: true,
+          removeOnFail: true,
+        })
+        .catch(() => undefined);
     }
 
     // If a user reads the opening DM and never taps the button, deliver the

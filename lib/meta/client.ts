@@ -414,6 +414,33 @@ export async function sendDirectMessage(
 }
 
 /**
+ * Marca el mensaje como visto o muestra "escribiendo...". Es un adorno: quien lo
+ * llama debe ignorar los fallos.
+ */
+export async function sendSenderAction(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  action: "typing_on" | "typing_off" | "mark_seen"
+): Promise<void> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: userId },
+        sender_action: action,
+      }),
+    }
+  );
+  await handleResponse(response);
+}
+
+/**
  * Send a direct message as a button template with up to 3 web_url buttons —
  * the reveal message plus tappable link buttons (cleaner than inline URLs).
  */

@@ -2,6 +2,7 @@ import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
+import { purgeOldAssistantData } from "@/lib/assistant/service";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -47,11 +48,21 @@ async function poll() {
 // Kick off one sweep shortly after boot, then on a fixed interval.
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+// Las conversaciones del asistente no se guardan para siempre.
+const purgeTimer = setInterval(
+  () =>
+    void purgeOldAssistantData().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("[DM Worker] Assistant purge failed:", message);
+    }),
+  60 * 60_000
+);
 
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
+  clearInterval(purgeTimer);
   await worker.close();
   process.exit(0);
 }

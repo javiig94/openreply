@@ -111,6 +111,16 @@ vi.mock("@/lib/ops/worker-health", () => ({
   recordWorkerAlert: vi.fn(),
 }));
 
+// El asistente tiene sus propias pruebas; aqui se comprueba que no estorba.
+vi.mock("@/lib/assistant/service", () => ({
+  assistantOnCampaignDelivered: vi.fn(),
+  assistantOnInboundMessage: vi.fn(),
+  assistantOwnsConversation: vi.fn(async () => false),
+  processAssistantEcho: vi.fn(),
+  processAssistantReminder: vi.fn(),
+  processAssistantReply: vi.fn(),
+}));
+
 vi.mock("@/lib/queue/client", () => ({
   getDMQueue: () => ({
     add: mockQueueAdd,
@@ -119,6 +129,9 @@ vi.mock("@/lib/queue/client", () => ({
   POSTBACK_JOB_NAME: "process-postback",
   FOLLOWUP_JOB_NAME: "process-followup",
   MESSAGE_JOB_NAME: "process-message",
+  ASSISTANT_REPLY_JOB_NAME: "assistant-reply",
+  ASSISTANT_REMINDER_JOB_NAME: "assistant-reminder",
+  ASSISTANT_ECHO_JOB_NAME: "assistant-echo",
 }));
 
 vi.mock("bullmq", () => {

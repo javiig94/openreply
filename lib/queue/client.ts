@@ -77,15 +77,48 @@ export interface ProcessMessageJob {
   senderId: string;
 }
 
+// Asistente: contestar a la persona pasado el tiempo de espera. Si ha llegado otro
+// mensaje suyo mientras tanto, este trabajo no hace nada y responde el siguiente.
+export interface AssistantReplyJob {
+  accountConnectionId?: string;
+  instagramAccountId: string;
+  conversationId: string;
+  triggerMessageId: string;
+}
+
+// Asistente: el unico recordatorio, dentro de las 24 h que permite Meta.
+export interface AssistantReminderJob {
+  accountConnectionId?: string;
+  instagramAccountId: string;
+  conversationId: string;
+  anchorMs: number;
+}
+
+// Asistente: Instagram avisa de lo que sale de la cuenta. Si no lo ha enviado el
+// sistema, lo ha escrito una persona y el asistente se aparta.
+export interface AssistantEchoJob {
+  accountConnectionId?: string;
+  instagramAccountId: string;
+  recipientId: string;
+  messageId: string;
+  text: string;
+}
+
 export type DmQueueJob =
   | ProcessCommentJob
   | ProcessPostbackJob
   | ProcessFollowUpJob
-  | ProcessMessageJob;
+  | ProcessMessageJob
+  | AssistantReplyJob
+  | AssistantReminderJob
+  | AssistantEchoJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const FOLLOWUP_JOB_NAME = "process-followup";
 export const MESSAGE_JOB_NAME = "process-message";
+export const ASSISTANT_REPLY_JOB_NAME = "assistant-reply";
+export const ASSISTANT_REMINDER_JOB_NAME = "assistant-reminder";
+export const ASSISTANT_ECHO_JOB_NAME = "assistant-echo";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

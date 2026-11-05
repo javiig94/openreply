@@ -195,6 +195,27 @@ export async function sendPrivateReplyWithLinkButton({
   });
 }
 
+/** "Escribiendo..." y visto. Solo en la conexion directa con Meta. */
+export async function sendSenderAction({
+  context,
+  instagramAccountId,
+  userId,
+  action,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  userId: string;
+  action: "typing_on" | "typing_off" | "mark_seen";
+}): Promise<void> {
+  if (context.provider !== "META") return;
+  await meta.sendSenderAction(
+    context.accessToken,
+    instagramAccountId,
+    userId,
+    action
+  );
+}
+
 export async function sendDirectMessage({
   context,
   instagramAccountId,

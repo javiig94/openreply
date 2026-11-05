@@ -86,6 +86,8 @@ model Workspace {
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
   serviceKeys       ServiceKey[]
+  assistantSettings AssistantSettings?
+  assistantConversations AssistantConversation[]
 
   @@index([ownerId])
 }
@@ -160,6 +162,7 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  assistantConversations AssistantConversation[]
 
   @@index([workspaceId])
 }
@@ -434,4 +437,74 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+// ---- Asistente de mensajes privados (anadido por Javi; no existe en el proyecto original) ----
+
+enum AssistantStatus {
+  ACTIVE
+  PAUSED_HUMAN
+  HANDED_OFF
+  OPTED_OUT
+  CLOSED
+}
+
+enum AssistantRole {
+  USER
+  ASSISTANT
+  AUTOMATION
+  HUMAN
+}
+
+// El interruptor general vive aqui, y nace apagado.
+model AssistantSettings {
+  workspaceId String   @id
+  enabled     Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AssistantConversation {
+  id                 String          @id @default(cuid())
+  workspaceId        String
+  instagramAccountId String
+  igUserId           String
+  username           String?
+  status             AssistantStatus @default(ACTIVE)
+  stage              String?
+  pausedUntil        DateTime?
+  disclosedAt        DateTime?
+  lastUserMessageAt  DateTime?
+  reminderSentAt     DateTime?
+  replyCount         Int             @default(0)
+  handoffReason      String?
+  inputTokens        Int             @default(0)
+  outputTokens       Int             @default(0)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount   @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  messages         AssistantMessage[]
+
+  @@unique([instagramAccountId, igUserId])
+  @@index([workspaceId, updatedAt])
+}
+
+model AssistantMessage {
+  id             String        @id @default(cuid())
+  conversationId String
+  role           AssistantRole
+  text           String
+  // Id de Instagram: evita procesar dos veces el mismo mensaje entrante.
+  externalId     String?       @unique
+  // Mensaje de la persona al que responde: evita contestar dos veces.
+  inReplyToId    String?
+  createdAt      DateTime      @default(now())
+
+  conversation AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([inReplyToId])
 }

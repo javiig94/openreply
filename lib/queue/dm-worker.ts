@@ -8,6 +8,12 @@ import { claimCommentDelivery, MAX_COMMENT_SEND_ATTEMPTS } from "./comment-deliv
 import { createHash } from "node:crypto";
 import { UnrecoverableError, Worker, type Job } from "bullmq";
 import {
+  ASSISTANT_ECHO_JOB_NAME,
+  ASSISTANT_REMINDER_JOB_NAME,
+  ASSISTANT_REPLY_JOB_NAME,
+  type AssistantEchoJob,
+  type AssistantReminderJob,
+  type AssistantReplyJob,
   getDMQueue,
   getRedisConnection,
   MESSAGE_JOB_NAME,
@@ -55,6 +61,14 @@ import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { hashRecipientId } from "@/lib/tracking/server";
 
 import { ZernioApiError } from "@/lib/zernio/client";
+import {
+  assistantOnCampaignDelivered,
+  assistantOnInboundMessage,
+  assistantOwnsConversation,
+  processAssistantEcho,
+  processAssistantReminder,
+  processAssistantReply,
+} from "@/lib/assistant/service";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -1125,6 +1139,14 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       );
       return;
     }
+    await assistantOnCampaignDelivered({
+      instagramId: automation.instagramAccount.instagramId,
+      igUserId: userId,
+      username: commenterName,
+      text: automation.dmMessage,
+      // Una lectura sin boton no abre las 24 h de Meta; pulsar el boton si.
+      openedByUser: !job.data.fallback,
+    });
     // Optional appreciation follow-up: once the link has been delivered, send a
     // short thank-you. It is scheduled as its own delayed job so it can go out
     // some minutes later (followUpDelayMinutes) rather than immediately. The
@@ -1280,6 +1302,20 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
 async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   const { instagramAccountId, messageId, messageText, senderId } = job.data;
 
+  // Con una conversacion en marcha manda el asistente: si la persona dice "guia"
+  // en mitad de una frase, se le contesta a eso en vez de soltarle la campana.
+  if (await assistantOwnsConversation(instagramAccountId, senderId)) {
+    await assistantOnInboundMessage({
+      instagramId: instagramAccountId,
+      igUserId: senderId,
+      messageId,
+      text: messageText,
+      handledByCampaign: false,
+    });
+    return;
+  }
+
+  let matchedCampaign = false;
   const automations = await prisma.automation.findMany({
     where: {
       ...connectionScope(job.data),
@@ -1310,6 +1346,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
         );
 
     if (!matchResult.matched) continue;
+    matchedCampaign = true;
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -1502,6 +1539,15 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           errorMessage: null,
         },
       });
+      if (!sendFollowPrompt) {
+        await assistantOnCampaignDelivered({
+          instagramId: instagramAccountId,
+          igUserId: senderId,
+          username: commenterName,
+          text: automation.dmMessage,
+          openedByUser: false,
+        });
+      }
     } catch (error) {
       await releaseWorkspaceDMReservation(
         automation.workspaceId,
@@ -1532,6 +1578,16 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       throw error;
     }
   }
+
+  // Sin campana que lo atienda, contesta el asistente si esta encendido. Si lo
+  // atendio una campana, solo se anota para tener el contexto.
+  await assistantOnInboundMessage({
+    instagramId: instagramAccountId,
+    igUserId: senderId,
+    messageId,
+    text: messageText,
+    handledByCampaign: matchedCampaign,
+  });
 }
 
 async function dispatchJob(job: Job<DmQueueJob>): Promise<void> {
@@ -1543,6 +1599,15 @@ async function dispatchJob(job: Job<DmQueueJob>): Promise<void> {
   }
   if (job.name === MESSAGE_JOB_NAME) {
     return processMessage(job as Job<ProcessMessageJob>);
+  }
+  if (job.name === ASSISTANT_REPLY_JOB_NAME) {
+    return processAssistantReply(job as Job<AssistantReplyJob>);
+  }
+  if (job.name === ASSISTANT_REMINDER_JOB_NAME) {
+    return processAssistantReminder(job as Job<AssistantReminderJob>);
+  }
+  if (job.name === ASSISTANT_ECHO_JOB_NAME) {
+    return processAssistantEcho(job as Job<AssistantEchoJob>);
   }
   return processComment(job as Job<ProcessCommentJob>);
 }

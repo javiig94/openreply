@@ -241,6 +241,44 @@ export function parseMessageEvents(
 }
 
 /**
+ * Lo que sale de la cuenta (eco). El asistente lo usa para apartarse cuando
+ * contesta una persona. Los mensajes sin texto, como las plantillas con boton
+ * que envia la propia aplicacion, no interesan.
+ */
+export function parseEchoEvents(payload: WebhookPayload): Array<{
+  instagramAccountId: string;
+  recipientId: string;
+  messageId: string;
+  text: string;
+}> {
+  const events: Array<{
+    instagramAccountId: string;
+    recipientId: string;
+    messageId: string;
+    text: string;
+  }> = [];
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message?.is_echo || message.is_deleted) continue;
+      const text = message.text?.trim();
+      const recipientId = messaging.recipient?.id;
+      const accountId = entry.id ?? messaging.sender?.id;
+      if (!text || !message.mid || !recipientId || !accountId) continue;
+      events.push({
+        instagramAccountId: accountId,
+        recipientId,
+        messageId: message.mid,
+        text,
+      });
+    }
+  }
+  return events;
+}
+
+/**
  * Parse Instagram DM read receipts. When a user reads an opening DM but does
  * not tap its button, the webhook route uses this to schedule the reveal after
  * a short grace period.
