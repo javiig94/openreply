@@ -1,0 +1,36 @@
+name: Fabricar imagen (GHCR)
+
+# Fabrica la imagen en GitHub para no gastar memoria en el servidor, que aloja otras webs.
+# No necesita claves propias: usa el permiso temporal de esta ejecucion.
+on:
+  push:
+    branches: [javi-imagen]
+    paths: [".github/workflows/imagen-ghcr.yml"]
+  workflow_dispatch:
+
+jobs:
+  imagen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          # La etiqueta es la version de OpenReply que paso la revision de seguridad.
+          tags: ghcr.io/${{ github.repository_owner }}/openreply:c78b2d2
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
