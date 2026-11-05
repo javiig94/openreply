@@ -22,12 +22,14 @@ const CAMPANA = {
   wholeWordMatch: true,
   matchAnyWord: false,
   dmTriggerEnabled: true,
-  openingDmEnabled: true,
-  openingDmMessage:
-    "Hola {username}. Has comentado en el reel. ¿Te paso la guía para montar tu canal de YouTube con IA?",
-  openingDmButtonLabel: "Sí, pásamela",
+  // Sin boton intermedio: con la app de Meta sin publicar no llegan los avisos de
+  // pulsaciones, y la persona se quedaria sin guia. El primer mensaje ya la lleva.
+  // Tampoco se pregunta nada: aun no llegarian sus respuestas.
+  openingDmEnabled: false,
+  openingDmMessage: null,
+  openingDmButtonLabel: null,
   dmMessage:
-    "Aquí la tienes. Son 7 pasos, con los textos listos para copiar en la IA.\n\n¿Empiezas de cero o ya tienes canal?",
+    "Hola {username}. Aquí tienes la guía para montar tu canal de YouTube con IA: 7 pasos, con los textos listos para copiar.",
   linkButtonLabel: "Abrir la guía",
   requireFollow: false,
   followUpEnabled: false,
