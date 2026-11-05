@@ -413,6 +413,8 @@ export async function sendDirectMessage(
   return handleResponse(response);
 }
 
+const PUBLISH_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Primer paso para publicar un reel: Instagram descarga el video de esa direccion
  * publica y lo procesa. Todavia no se publica nada.
@@ -436,6 +438,7 @@ export async function createReelContainer(
         caption: reel.caption,
         share_to_feed: reel.shareToFeed,
       }),
+      signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
     }
   );
   return handleResponse(response);
@@ -448,7 +451,10 @@ export async function getContainerStatus(
 ): Promise<{ status_code?: string; status?: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${containerId}?fields=status_code,status`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
+    }
   );
   return handleResponse(response);
 }
@@ -468,6 +474,7 @@ export async function publishContainer(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ creation_id: containerId }),
+      signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
     }
   );
   return handleResponse(response);
@@ -479,7 +486,10 @@ export async function getMediaPermalink(
 ): Promise<string | null> {
   const response = await fetch(
     `${instagramGraphBase()}/${mediaId}?fields=permalink`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS),
+    }
   );
   const data = await handleResponse<{ permalink?: string }>(response);
   return data.permalink ?? null;

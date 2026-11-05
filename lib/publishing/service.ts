@@ -180,11 +180,11 @@ async function fail(
   post: DuePost,
   message: string
 ): Promise<void> {
-  await prisma.scheduledPost.update({
-    where: { id: post.id },
+  const { count } = await prisma.scheduledPost.updateMany({
+    where: { id: post.id, status: { in: ["SCHEDULED", "PROCESSING"] } },
     data: { status: "FAILED", errorMessage: message },
   });
-  await warn(config, post, message);
+  if (count > 0) await warn(config, post, message);
 }
 
 async function startPost(
@@ -227,8 +227,8 @@ async function startPost(
         shareToFeed: post.shareToFeed,
       }
     );
-    await prisma.scheduledPost.update({
-      where: { id: post.id },
+    await prisma.scheduledPost.updateMany({
+      where: { id: post.id, status: "PROCESSING" },
       data: { containerId: container.id },
     });
   } catch (error) {
@@ -237,15 +237,16 @@ async function startPost(
       isConfirmedSendRejection(error) && !(error instanceof RateLimitError);
     const attempts = post.attempts + 1;
     if (permanent || attempts >= MAX_START_ATTEMPTS) {
-      await prisma.scheduledPost.update({
-        where: { id: post.id },
+      await prisma.scheduledPost.updateMany({
+        where: { id: post.id, status: "PROCESSING" },
         data: { attempts },
       });
       await fail(config, post, describeError(error));
       return;
     }
-    await prisma.scheduledPost.update({
-      where: { id: post.id },
+    // Solo si sigue siendo suya: una llamada colgada no resucita un reel cancelado.
+    await prisma.scheduledPost.updateMany({
+      where: { id: post.id, status: "PROCESSING" },
       data: {
         status: "SCHEDULED",
         attempts,
@@ -340,6 +341,14 @@ async function advanceProcessing(
 
   switch (statusCode) {
     case "FINISHED":
+      if (now.getTime() - post.scheduledAt.getTime() > MAX_LATE_MS) {
+        await fail(
+          config,
+          post,
+          "Se pasó la hora de publicarlo y no se ha publicado. Prográmalo de nuevo."
+        );
+        return;
+      }
       await publishPost(post, accessToken, config);
       return;
     case "PUBLISHED":

@@ -5,7 +5,7 @@
  * Esta en espanol a proposito, igual que la pantalla del asistente.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Status =
   | "SCHEDULED"
@@ -59,6 +59,8 @@ export default function PublishingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // El estado tarda un instante en aplicarse: esto frena un doble clic de verdad.
+  const submitting = useRef(false);
   const [videoFile, setVideoFile] = useState("");
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
@@ -86,6 +88,8 @@ export default function PublishingPage() {
 
   async function schedule(event: React.FormEvent) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setFormError(null);
     setSaving(true);
     const response = await fetch("/api/publishing", {
@@ -98,6 +102,7 @@ export default function PublishingPage() {
         scheduledAt: when ? new Date(when).toISOString() : "",
       }),
     });
+    submitting.current = false;
     setSaving(false);
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as {

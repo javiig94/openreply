@@ -114,13 +114,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const post = await prisma.scheduledPost.create({
-    data: {
-      workspaceId,
-      instagramAccountId: account.id,
-      ...parsed.value,
-    },
-    select: { id: true },
-  });
-  return NextResponse.json({ success: true, data: post }, { status: 201 });
+  try {
+    const post = await prisma.scheduledPost.create({
+      data: {
+        workspaceId,
+        instagramAccountId: account.id,
+        ...parsed.value,
+      },
+      select: { id: true },
+    });
+    return NextResponse.json({ success: true, data: post }, { status: 201 });
+  } catch (error) {
+    // Dos envios a la vez: el indice unico de la base de datos deja pasar solo uno.
+    if ((error as { code?: string }).code === "P2002") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Este vídeo ya está programado o publicado en esta cuenta.",
+        },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 }

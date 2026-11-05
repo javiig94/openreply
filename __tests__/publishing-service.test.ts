@@ -70,8 +70,14 @@ function enCola(...posts: Array<ReturnType<typeof post>>) {
   );
 }
 
+/** Los cambios de estado finales, sin contar las reservas de cada vuelta. */
 const estados = () =>
-  mockPrisma.scheduledPost.update.mock.calls.map((call) => call[0].data.status);
+  [
+    ...mockPrisma.scheduledPost.update.mock.calls,
+    ...mockPrisma.scheduledPost.updateMany.mock.calls,
+  ]
+    .map((call) => call[0].data.status)
+    .filter((status) => status && status !== "PROCESSING" && status !== "PUBLISHING");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -103,7 +109,10 @@ describe("empezar", () => {
       shareToFeed: true,
     });
     expect(mockMeta.publishContainer).not.toHaveBeenCalled();
-    expect(mockPrisma.scheduledPost.update.mock.calls[0][0].data.containerId).toBe("c1");
+    const guardado = mockPrisma.scheduledPost.updateMany.mock.calls.find(
+      (call) => call[0].data.containerId === "c1"
+    );
+    expect(guardado?.[0].where.status).toBe("PROCESSING");
   });
 
   it("si otra vuelta ya la reservó, no hace nada", async () => {
@@ -145,6 +154,13 @@ describe("empezar", () => {
     expect(mockEmail).toHaveBeenCalled();
   });
 
+  it("si el reel ya cambió de estado, no lo marca como fallido ni avisa", async () => {
+    mockPrisma.scheduledPost.updateMany.mockResolvedValue({ count: 0 });
+    enCola(post({ scheduledAt: new Date(NOW.getTime() - 7 * 3_600_000) }));
+    await publishDuePosts(NOW);
+    expect(mockEmail).not.toHaveBeenCalled();
+  });
+
   it("si el vídeo no se puede abrir, lo reintenta sin crear contenedor", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
     enCola(post());
@@ -161,6 +177,7 @@ describe("empezar", () => {
     expect(mockEmail).not.toHaveBeenCalled();
 
     mockPrisma.scheduledPost.update.mockClear();
+    mockPrisma.scheduledPost.updateMany.mockClear();
     enCola(post({ attempts: 9 }));
     await publishDuePosts(NOW);
     expect(estados()).toContain("FAILED");
@@ -197,6 +214,25 @@ describe("publicar: un reel nunca sale dos veces", () => {
       mediaId: "m1",
       permalink: "https://instagram.com/reel/x",
     });
+  });
+
+  it("con el vídeo listo pero muchas horas tarde, no lo publica y avisa", async () => {
+    enCola(procesando({ scheduledAt: new Date(NOW.getTime() - 7 * 3_600_000) }));
+    await publishDuePosts(NOW);
+    expect(mockMeta.publishContainer).not.toHaveBeenCalled();
+    expect(estados()).toEqual(["FAILED"]);
+    expect(mockEmail).toHaveBeenCalled();
+  });
+
+  it("una llamada colgada no resucita un reel que ya ha cambiado de estado", async () => {
+    mockMeta.createReelContainer.mockRejectedValue(new Error("colgado"));
+    enCola(post());
+    await publishDuePosts(NOW);
+    const vuelta = mockPrisma.scheduledPost.updateMany.mock.calls.find(
+      (call) => call[0].data.status === "SCHEDULED"
+    );
+    expect(vuelta?.[0].where.status).toBe("PROCESSING");
+    expect(mockPrisma.scheduledPost.update).not.toHaveBeenCalled();
   });
 
   it("si otra vuelta ya está publicando, no publica", async () => {
