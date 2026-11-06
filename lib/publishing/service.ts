@@ -8,7 +8,7 @@
  * Regla de construccion: un reel nunca sale dos veces. Si Instagram no confirma
  * la publicacion, se marca como UNCONFIRMED, no se reintenta y se avisa a Javi.
  */
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db/client";
@@ -414,6 +414,30 @@ async function guarded(where: string, work: () => Promise<void>): Promise<void> 
   }
 }
 
+/**
+ * Norma de Javi: lo que ya ha salido en Instagram no ocupa sitio en el servidor,
+ * que es compartido con otras webs. Se borra el video, su texto y su portada.
+ * Las copias originales siguen en su PC.
+ */
+export async function removePublishedFiles(videosDir: string): Promise<void> {
+  const names = await readdir(videosDir).catch(() => [] as string[]);
+  const videos = names.filter(isValidVideoName);
+  if (videos.length === 0) return;
+  const published = await prisma.scheduledPost.findMany({
+    where: { status: "PUBLISHED", videoFile: { in: videos } },
+    select: { videoFile: true },
+  });
+  for (const { videoFile } of published) {
+    const base = videoFile.replace(/\.mp4$/, "");
+    // El video va el ultimo: si algo falla a medias, la siguiente vuelta lo reintenta.
+    for (const ext of [".jpg", ".txt", ".mp4"]) {
+      await unlink(path.join(videosDir, base + ext)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    }
+  }
+}
+
 /** Una vuelta de la cola. La lanza el proceso de envios cada minuto. */
 export async function publishDuePosts(now: Date = new Date()): Promise<void> {
   const config = getPublishingConfig();
@@ -447,6 +471,8 @@ export async function publishDuePosts(now: Date = new Date()): Promise<void> {
   for (const post of processing) {
     await guarded("processing", () => advanceProcessing(post, now, config));
   }
+
+  await guarded("cleanup", () => removePublishedFiles(config.videosDir));
 
   const used = await prisma.scheduledPost.count({
     where: {

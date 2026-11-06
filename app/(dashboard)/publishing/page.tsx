@@ -153,7 +153,7 @@ export default function PublishingPage() {
         )}
         {overview.videos.length === 0 && (
           <p className="mt-2 text-sm text-muted">
-            Aún no hay vídeos en el servidor. Se suben con INSTALAR OPENREPLY.
+            Aún no hay vídeos en el servidor. Los ya publicados se borran solos.
           </p>
         )}
 

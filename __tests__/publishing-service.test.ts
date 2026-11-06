@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const { mockPrisma, mockMeta, mockEmail } = vi.hoisted(() => ({
   mockPrisma: {
@@ -40,6 +43,7 @@ vi.mock("@/lib/assistant/notify", () => ({ sendOwnerEmail: mockEmail }));
 import {
   isValidVideoName,
   publishDuePosts,
+  removePublishedFiles,
   validateSchedule,
   videoUrlFor,
 } from "@/lib/publishing/service";
@@ -385,6 +389,62 @@ describe("publicar: un reel nunca sale dos veces", () => {
     await publishDuePosts(NOW);
     expect(mockMeta.publishContainer).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("borrar del servidor lo ya publicado", () => {
+  let dir: string;
+  const hay = (nombre: string) => existsSync(path.join(dir, nombre));
+  const crea = (...nombres: string[]) => nombres.forEach((n) => writeFileSync(path.join(dir, n), "x"));
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "reels-"));
+    process.env.PUBLISH_VIDEOS_DIR = dir;
+  });
+
+  afterEach(() => {
+    delete process.env.PUBLISH_VIDEOS_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("borra el vídeo, su portada y su texto, y deja los demás", async () => {
+    crea("A.mp4", "A.jpg", "A.txt", "B.mp4", "B.jpg", "B.txt");
+    mockPrisma.scheduledPost.findMany.mockResolvedValue([{ videoFile: "A.mp4" }]);
+    await removePublishedFiles(dir);
+    expect(["A.mp4", "A.jpg", "A.txt"].some(hay)).toBe(false);
+    expect(["B.mp4", "B.jpg", "B.txt"].every(hay)).toBe(true);
+    const consulta = mockPrisma.scheduledPost.findMany.mock.calls[0][0];
+    expect(consulta.where.status).toBe("PUBLISHED");
+  });
+
+  it("no falla si falta la portada", async () => {
+    crea("A.mp4");
+    mockPrisma.scheduledPost.findMany.mockResolvedValue([{ videoFile: "A.mp4" }]);
+    await expect(removePublishedFiles(dir)).resolves.toBeUndefined();
+    expect(hay("A.mp4")).toBe(false);
+  });
+
+  it("no falla si la carpeta no existe", async () => {
+    await expect(removePublishedFiles(path.join(dir, "no-existe"))).resolves.toBeUndefined();
+    expect(mockPrisma.scheduledPost.findMany).not.toHaveBeenCalled();
+  });
+
+  it("cada vuelta de la cola borra lo publicado", async () => {
+    crea("A.mp4", "A.jpg");
+    enCola(post({ status: "PUBLISHED" }));
+    await publishDuePosts(NOW);
+    expect(hay("A.mp4")).toBe(false);
+    expect(hay("A.jpg")).toBe(false);
+  });
+
+  it.each(["SCHEDULED", "PROCESSING", "FAILED", "UNCONFIRMED", "CANCELLED"])(
+    "no borra un vídeo en estado %s",
+    async (status) => {
+      crea("A.mp4", "A.jpg", "A.txt");
+      enCola(post({ status, scheduledAt: new Date(NOW.getTime() + 3_600_000) }));
+      await publishDuePosts(NOW);
+      expect(["A.mp4", "A.jpg", "A.txt"].every(hay)).toBe(true);
+    }
+  );
 });
 
 describe("datos del panel", () => {
