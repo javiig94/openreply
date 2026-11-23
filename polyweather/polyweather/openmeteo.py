@@ -57,6 +57,35 @@ def archived_forecast_max(lat: float, lon: float, start: str, end: str,
             if v is not None}
 
 
+def archived_forecast_max_multi(lat: float, lon: float, start: str, end: str,
+                                unit: str, tz: str,
+                                models: list[str]) -> dict[str, dict[str, float]]:
+    """Archived deterministic daily max for several models at once.
+
+    Returns {model_name: {date: max_temp}}. Open-Meteo suffixes each model's
+    field as temperature_2m_max_<model> when multiple models are requested.
+    """
+    d = _get(_HIST_FC, {
+        "latitude": lat, "longitude": lon,
+        "start_date": start, "end_date": end,
+        "daily": "temperature_2m_max",
+        "models": ",".join(models),
+        "temperature_unit": unit, "timezone": tz,
+    })
+    dd = d.get("daily", {})
+    times = dd.get("time", [])
+    out: dict[str, dict[str, float]] = {}
+    for m in models:
+        key = f"temperature_2m_max_{m}"
+        series = dd.get(key)
+        if series is None and len(models) == 1:
+            series = dd.get("temperature_2m_max")
+        if series is None:
+            continue
+        out[m] = {t: v for t, v in zip(times, series) if v is not None}
+    return out
+
+
 def actual_max(lat: float, lon: float, start: str, end: str,
                unit: str, tz: str) -> dict[str, float]:
     """ERA5 reanalysis daily max temp (proxy ground truth for calibration).
