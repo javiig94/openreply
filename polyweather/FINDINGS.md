@@ -37,12 +37,65 @@ market lacks — a better model (ECMWF, multi-model ensemble), a genuine
 microstructure/speed edge at short lead, or thinner books (where slippage then
 eats you).
 
-### Next experiments
+## Experiment 2 — four strategies, London May–Sep 2025 (150 events)
 
-1. Add **ECMWF** (and a GFS+ECMWF blend) to `model.py` — the most likely source
-   of a Brier improvement over the market.
-2. Use the **live 31-member ensemble spread** (`scan_live.py`) instead of a
-   Gaussian around the deterministic mean; test whether the spread is better
-   calibrated than the price at short lead.
-3. Repeat on **lower-volume cities** and measure order-book depth to quantify the
-   slippage-vs-edge trade-off honestly.
+Ran `research.py` (multi-model) + live order-book probes + `nowcast.py`.
+
+### A. Multi-model (GFS+ECMWF+ICON) skill vs market, by lead
+
+| lead | Brier model | Brier market | diff | model hit | market hit |
+|-----:|------------:|-------------:|-----:|----------:|-----------:|
+| 48h  | 0.6930 | 0.7747 | +0.082 | 42.3% | 30.8% |
+| 24h  | 0.6945 | 0.6996 | +0.005 | 41.3% | 42.7% |
+| 12h  | 0.6945 | 0.6175 | −0.077 | 41.3% | 58.7% |
+| 3h   | 0.6945 | 0.5738 | −0.121 | 41.3% | 56.0% |
+
+**Adding ECMWF did not help.** Same shape as GFS-alone: the model only "wins"
+at 48h (immature market) and the sharp market crushes it by 3h. Public forecast
+skill is priced in. **Dead end.**
+
+### B. Convergence (enter 24h on disagreement, exit 3h)
+
+Backtest showed +66% (exit) / +84% (hold) ROI — **not trusted.** It is built on
+cached *last-trade* prices, which Experiment C proved unreliable, and rests on
+~111 highly-correlated bets (adjacent buckets, autocorrelated weather) = few
+independent samples. **Unvalidated; treat as noise until reproduced on
+executable quotes across multiple cities/seasons.**
+
+### C. Intra-event arbitrage (overround) — killed by the live book
+
+Cached last-trade prices summed to 1.08–1.25 (looked like a fat overround to
+fade). The **live order book says otherwise**: on a real market the cheapest
+YES asks summed to **1.019** (~2% vig) and selling all YES collected 0.964 (you
+*lose* 3.6% after paying the winner). The historical 1.25 was a **stale-price
+artifact** of illiquid buckets whose last trade never updated. **No arb.**
+
+### D. Nowcast ("read the thermometer") — right idea, wrong data
+
+Concept: once the observed running max passes a bucket's top, that bucket is
+mathematically dead; fade any laggard still quoting it. Sound in theory. But with
+free **ERA5 gridded** observations it is unsafe: ERA5 vs the resolution station
+has **MAE 1.87°F, std 2.25°F, max divergence 5.8°F** (hotter on 48/150 days,
+cooler on 62/150). The screen flagged **46 "impossible" buckets that actually
+won** — false positives that would lose money. **A real nowcast needs the exact
+station's live METAR/Wunderground feed, not reanalysis.**
+
+## Bottom line
+
+This is a **near-efficient, bot-saturated** market. Across four angles:
+forecast skill is priced in; the overround is a measurement mirage; convergence
+is unvalidated noise on bad prices; the nowcast needs station-grade real-time
+data the free tier can't supply. **No free, model-based edge survived contact
+with real order books.** The viral "autopilot prints money" story does not
+reproduce.
+
+The only angle with a theoretical pulse: **real-time nowcasting against the
+exact resolution station (METAR), in cities the incumbent bots have not
+saturated** — a speed/infrastructure game, not a modelling game. Even then, a
+live book we sampled (Seoul) was already sharp, i.e. someone is doing this.
+
+### If pursued further (eyes open)
+1. Wire the **station METAR feed** (free, real-time) for one city; re-run `nowcast.py`
+   logic live against the order book, not cached last-trade.
+2. Measure **executable** depth (best bid/ask, not last trade) on low-volume cities.
+3. Account for fees + the ~2% vig in every P&L before believing any ROI.
