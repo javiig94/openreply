@@ -85,11 +85,51 @@ def active_markets(limit=400):
         if any(w in s for w in [" vs ", " vs.", "dota", "cs2", "nba game", "map 1",
                                 "spread:", "counter-strike", "valorant", "moneyline"]):
             continue  # live sports noise reprices too fast to beat anyway
+        import json as _json
+        toks = _json.loads(m.get("clobTokenIds") or "[]")
         st, wk = entities(q)
         mk.append({"q": q, "price": m.get("lastTradePrice"),
                    "strong": st, "weak": wk,
-                   "slug": m.get("slug", "")})
+                   "slug": m.get("slug", ""),
+                   "token": toks[0] if toks else ""})
     return mk
+
+
+def _minute_hist(token):
+    d = _get(f"https://clob.polymarket.com/prices-history",
+             {"market": token, "interval": "1d", "fidelity": 1})
+    return [(int(p["t"]), float(p["p"])) for p in d.get("history", [])] if d else []
+
+
+def residual(token, headline_ts, side):
+    """Has the market already repriced in the implied direction?
+
+    Compares the current price to a baseline ~10 min before the headline. Tells
+    you if you are EARLY (price still flat -> room) or LATE (already moved).
+    Returns (status, baseline, current, moved_toward).
+    """
+    if not token or not side:
+        return "no-token", None, None, None
+    h = _minute_hist(token)
+    if len(h) < 3:
+        return "no-data", None, None, None
+    current = h[-1][1]
+    cutoff = (headline_ts - 600) if headline_ts else (h[-1][0] - 1800)
+    pre = [p for (t, p) in h if t <= cutoff]
+    baseline = pre[-1] if pre else h[0][1]
+    sign = 1 if side == "YES" else -1
+    moved_toward = (current - baseline) * sign       # >0 = already moved our way
+    # room = distance the price can still travel toward the implied outcome
+    room = (1 - current) if side == "YES" else current
+    if room < 0.10:
+        status = "PRICED IN (no reward)"              # already at the implied extreme
+    elif moved_toward >= 0.08:
+        status = "LATE (already moving)"
+    elif abs(current - baseline) < 0.03:
+        status = "EARLY (flat — room)"
+    else:
+        status = "PARTIAL"
+    return status, baseline, current, moved_toward
 
 
 def match(headline, markets):
@@ -129,12 +169,19 @@ def scan_once(markets, seen, log=None):
         agestr = f"{age//60}m{age % 60}s" if age is not None else "?"
         for score, mk, hits in m:
             side, conf, why = infer(it["title"], mk["q"])
+            status = base = cur = moved = None
             if side is None:
                 sidestr = "side=? (no clear direction)"
             else:
-                # is the implied side cheap enough to still have room?
-                px = mk["price"]
-                sidestr = f"==> BET {side}  conf={conf:.2f}  [{why}]"
+                status, base, cur, moved = residual(mk["token"], it["ts"], side)
+                tag = {"EARLY (flat — room)": "🟢 ACTIONABLE",
+                       "PARTIAL": "🟡 some room",
+                       "LATE (already moving)": "🟡 late",
+                       "PRICED IN (no reward)": "🔴 already priced"}.get(status, "")
+                sidestr = (f"==> BET {side}  conf={conf:.2f}  [{why}]\n"
+                           f"   RESIDUAL: {status} {tag}"
+                           + (f"  (pre={base:.3f} now={cur:.3f} moved_toward={moved:+.3f})"
+                              if base is not None else ""))
             line = (f"ALERT score={score} lat={agestr} [{it['source']}]\n"
                     f"   NEWS : {it['title']}\n"
                     f"   MKT  : {mk['q']}  (price={mk['price']})\n"
@@ -143,7 +190,7 @@ def scan_once(markets, seen, log=None):
             print(line + "\n")
             if log:
                 log.write(f"{now}\t{it['ts']}\t{score}\t{it['source']}\t{side}\t{conf:.2f}\t"
-                          f"{it['title']}\t{mk['q']}\t{mk['price']}\n")
+                          f"{status}\t{base}\t{cur}\t{mk['slug']}\t{it['title']}\t{mk['q']}\n")
                 log.flush()
             alerts += 1
     return alerts
