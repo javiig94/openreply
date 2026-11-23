@@ -3,4 +3,5 @@ __pycache__/
 data/*.txt
 data/*.json
 data/*.csv
+data/*.log
 .venv/
