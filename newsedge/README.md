@@ -35,35 +35,46 @@ CEX. That window is the whole opportunity.
   old**. To capture discrete events you need faster sources than RSS (primary
   source pages, data feeds, social firehose).
 
-## The monitor (newsedge.py)
+## The monitor (newsedge.py + sources.py + direction.py)
 
-Watches fast free RSS feeds (BBC world/biz/politics, CoinDesk), indexes active
-non-sports Polymarket markets by proper-noun entity, and alerts when a fresh
-headline matches a market — with the current price and the headline’s age.
+Pipeline: pull **multiple sources** → match headline to open market by entity →
+**infer the trade side** → alert with price, latency, side and confidence.
+
+- **sources.py** — RSS (BBC world/biz/politics, CoinDesk, Fed) **+ Hacker News**
+  (Algolia, one call, titled+timestamped, breaks tech/crypto fast). Hook left for
+  SEC EDGAR / primary-source pollers.
+- **match** — requires a shared multi-word proper noun (or two proper nouns), so
+  loose overlap (“ai”, “french”) no longer fires.
+- **direction.py** — detects the market’s event type (resignation, election,
+  price-reach, approval, ceasefire, rate decision) and applies a polarity lexicon
+  to the headline, handling question-negation and explicit denials. Validated
+  8/8 on representative cases. Returns side (YES/NO) + confidence.
 
 ```bash
 python newsedge.py --once          # one scan of current headlines vs markets
-python newsedge.py --watch 15      # poll every 15s, log alerts to data/alerts.log
+python newsedge.py --watch 15      # poll every 15s, log to data/alerts.log
 ```
 
-Live demo caught, at ~3 min latency: *“Nvidia shares up 33% after Jensen Huang
-returns”* → market *“Jensen Huang announced resignation or removal by Dec 2026?”*
-Matching requires a shared multi-word proper noun (or two proper nouns), so loose
-keyword overlap (“ai”, “french”) no longer fires.
+Live demo output:
+```
+NEWS : Nvidia shares up 33% ... after Jensen Huang returns      [lat ~3m]
+MKT  : Jensen Huang announced resignation or removal by Dec 2026?  (price=0.051)
+==> BET NO  conf=0.60  [resign -1 [-returns]]
+```
+(Note the price is already 0.051 — the market had moved; a real trade needs the
+"not already moved" check below. The side inference itself is correct.)
 
 Read-only: it ALERTS, it does not trade.
 
-## To turn this into a strategy (eyes open)
-1. **Faster sources than RSS.** RSS already costs you minutes. For discrete
-   events, poll the primary source (gov/court/company IR page, sports data API)
-   or a social firehose. This is the real engineering edge.
-2. **Direction inference.** The headline must map to YES/NO. Needs an NLP/LLM
-   step per (headline, market question).
-3. **Check the market hasn’t already moved** before acting (compare current price
-   to its pre-news level) — only trade the un-repriced residual.
-4. **Auto-execute** via the CLOB API within the window, with size limited by
-   book depth.
-5. Backtest direction+timing on logged alerts before risking money.
+## Status of the strategy build
+1. **Faster sources than RSS** — *partly done* (HN/Algolia added). Next: primary
+   sources for discrete events (SEC EDGAR, sports data APIs, gov pages).
+2. **Direction inference** — **done** (`direction.py`, lexicon/rule based).
+3. **Check the market hasn’t already moved** — *to do*: compare live price to the
+   pre-headline level; only trade the un-repriced residual.
+4. **Auto-execute** via CLOB within the window, size capped by book depth — *to do*.
+5. **Backtest direction+timing on logged alerts** — run `--watch` for days to
+   build `data/alerts.log`, then score inferred side vs realized resolution.
 
 ## Why this is the most promising angle we found
 Everything else died to execution cost (Polymarket taker spread) or was priced

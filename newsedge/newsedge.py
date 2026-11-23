@@ -21,20 +21,13 @@ import os
 import re
 import time
 import datetime as dt
-import xml.etree.ElementTree as ET
-import urllib.request
 import requests
+
+import sources
+from direction import infer
 
 DATA = os.path.join(os.path.dirname(__file__), "data")
 GAMMA = "https://gamma-api.polymarket.com"
-
-# Fresh, reachable, free RSS feeds (WSJ feed came back stale, dropped).
-FEEDS = {
-    "BBCworld": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "BBCbiz": "https://feeds.bbci.co.uk/news/business/rss.xml",
-    "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    "BBCpol": "https://feeds.bbci.co.uk/news/politics/rss.xml",
-}
 
 STOP = set("""a an the of to in on for by at is are be will would there no new
 after before over under with without and or not this that these those he she it
@@ -59,29 +52,6 @@ def _get(url, params=None, tries=4):
         except Exception as e:  # noqa: BLE001
             last = e; time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"{url}: {last}")
-
-
-def fetch_rss(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 newsedge"})
-    raw = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "ignore")
-    root = ET.fromstring(raw)
-    out = []
-    for it in root.findall(".//item"):
-        title = html.unescape(it.findtext("title", "") or "")
-        link = it.findtext("link", "") or it.findtext("guid", "") or ""
-        pub = it.findtext("pubDate", "") or ""
-        ts = _parse_date(pub)
-        out.append({"title": title, "link": link, "ts": ts})
-    return out
-
-
-def _parse_date(s):
-    for fmt in ("%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z"):
-        try:
-            return int(dt.datetime.strptime(s.strip(), fmt).timestamp())
-        except (ValueError, TypeError):
-            continue
-    return 0
 
 
 def entities(text):
@@ -147,33 +117,35 @@ def match(headline, markets):
 def scan_once(markets, seen, log=None):
     now = int(time.time())
     alerts = 0
-    for src, url in FEEDS.items():
-        try:
-            items = fetch_rss(url)
-        except Exception as e:  # noqa: BLE001
-            print(f"  [{src}] feed error: {e}")
+    for it in sources.all_items():
+        key = it["link"] or it["title"]
+        if key in seen:
             continue
-        for it in items:
-            key = it["link"] or it["title"]
-            if key in seen:
-                continue
-            seen.add(key)
-            m = match(it["title"], markets)
-            if not m:
-                continue
-            age = (now - it["ts"]) if it["ts"] else None
-            agestr = f"{age//60}m{age % 60}s" if age is not None else "?"
-            for score, mk, hits in m:
-                line = (f"ALERT score={score} lat={agestr} [{src}]\n"
-                        f"   NEWS : {it['title']}\n"
-                        f"   MKT  : {mk['q']}  (price={mk['price']})\n"
-                        f"   via  : {', '.join(hits[:6])}")
-                print(line + "\n")
-                if log:
-                    log.write(f"{now}\t{score}\t{agestr}\t{src}\t{it['title']}\t"
-                              f"{mk['q']}\t{mk['price']}\n")
-                    log.flush()
-                alerts += 1
+        seen.add(key)
+        m = match(it["title"], markets)
+        if not m:
+            continue
+        age = (now - it["ts"]) if it["ts"] else None
+        agestr = f"{age//60}m{age % 60}s" if age is not None else "?"
+        for score, mk, hits in m:
+            side, conf, why = infer(it["title"], mk["q"])
+            if side is None:
+                sidestr = "side=? (no clear direction)"
+            else:
+                # is the implied side cheap enough to still have room?
+                px = mk["price"]
+                sidestr = f"==> BET {side}  conf={conf:.2f}  [{why}]"
+            line = (f"ALERT score={score} lat={agestr} [{it['source']}]\n"
+                    f"   NEWS : {it['title']}\n"
+                    f"   MKT  : {mk['q']}  (price={mk['price']})\n"
+                    f"   {sidestr}\n"
+                    f"   via  : {', '.join(hits[:6])}")
+            print(line + "\n")
+            if log:
+                log.write(f"{now}\t{it['ts']}\t{score}\t{it['source']}\t{side}\t{conf:.2f}\t"
+                          f"{it['title']}\t{mk['q']}\t{mk['price']}\n")
+                log.flush()
+            alerts += 1
     return alerts
 
 
@@ -189,7 +161,8 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     print("[newsedge] pulling active markets...")
     markets = active_markets()
-    print(f"[newsedge] {len(markets)} news-sensitive markets indexed. feeds: {', '.join(FEEDS)}\n")
+    feednames = list(sources.RSS_FEEDS) + ["HN"]
+    print(f"[newsedge] {len(markets)} news-sensitive markets indexed. sources: {', '.join(feednames)}\n")
     seen = set()
 
     if args.watch:
