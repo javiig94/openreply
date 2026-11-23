@@ -45,10 +45,11 @@ def iso_ts(iso):
     return int(dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
 
 
-def price_at(token, as_of, window_end):
+def price_at(token, as_of, window_end=None):
+    # interval=max returns the whole life of the market in one call; the
+    # startTs/endTs+fidelity mode 400s on many ranges, so avoid it.
     d = _get(f"{CLOB}/prices-history",
-             {"market": token, "startTs": as_of - 14 * 86400,
-              "endTs": window_end, "fidelity": 180})
+             {"market": token, "interval": "max", "fidelity": 720})
     hist = [(int(p["t"]), float(p["p"])) for p in d.get("history", [])]
     prior = [p for (t, p) in hist if t <= as_of]
     return prior[-1] if prior else None
@@ -61,13 +62,15 @@ def collect(n_target, min_vol, lead_hours):
     seen = set()
     offset = 0
     page = 100
-    while len(rows) < n_target:
+    max_offset = 12000           # guard against endless paging
+    while len(rows) < n_target and offset < max_offset:
         batch = _get(f"{GAMMA}/markets", {
             "closed": "true", "limit": page, "offset": offset,
             "order": "volumeNum", "ascending": "false"})
         if not batch:
             break
         offset += page
+        print(f"  [page offset={offset}] have {len(rows)} rows")
         for m in batch:
             try:
                 vol = float(m.get("volumeNum") or 0)
@@ -95,7 +98,8 @@ def collect(n_target, min_vol, lead_hours):
             try:
                 p = price_at(toks[0], end_ts - lead_hours * 3600, end_ts)
             except Exception:  # noqa: BLE001
-                continue
+                p = None
+            time.sleep(0.12)   # be gentle with the CLOB endpoint
             if p is None:
                 continue
             rows.append({"q": m.get("question", "")[:80], "vol": vol,
@@ -109,6 +113,62 @@ def collect(n_target, min_vol, lead_hours):
     json.dump(rows, open(path, "w"))
     print(f"[flsb] saved {len(rows)} markets -> {path}")
     return rows
+
+
+def categorize(q: str) -> str:
+    s = q.lower()
+    if any(w in s for w in ['nba', 'nfl', 'nhl', 'mlb', ' vs ', 'vs.', 'win the', 'beat ',
+                            'ufc', 'premier', 'la liga', 'champions', 'super bowl', 'playoff',
+                            'game ', 'match', 'defeat', 'tournament', 'cup', 'grand prix', 'f1']):
+        return 'sports'
+    if any(w in s for w in ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'solana', '$',
+                            'dogecoin', 'token', 'coin', 'price of', 'market cap', 'ath']):
+        return 'crypto'
+    if any(w in s for w in ['election', 'president', 'senate', 'congress', 'nominee', 'vote',
+                            'governor', 'prime minister', 'parliament', 'poll', 'democrat',
+                            'republican', 'trump', 'biden', 'harris', 'mayor', 'cabinet',
+                            'resign', 'impeach']):
+        return 'politics'
+    if any(w in s for w in ['fed', 'interest rate', 'inflation', 'cpi', 'gdp', 'recession',
+                            'jobs', 'unemployment', 'rate cut', 'rate hike']):
+        return 'econ'
+    return 'other'
+
+
+def _roi(rows, side_fn, spread=0.0):
+    """ROI holding to resolution. `spread` is the half-spread you pay on entry
+    (e.g. 0.01 = you buy 1 cent worse than the mid). Models execution cost."""
+    staked = pnl = 0.0
+    n = w = 0
+    for r in rows:
+        bet = side_fn(r)
+        if bet is None:
+            continue
+        mid = r["price"] if bet == "yes" else 1 - r["price"]
+        q = mid + spread                 # pay up to cross the spread
+        if q <= 0.02 or q >= 0.98:
+            continue
+        won = (r["yes_won"] == 1) if bet == "yes" else (r["yes_won"] == 0)
+        pnl += (1 - q) if won else -q
+        staked += q
+        n += 1
+        w += int(won)
+    return n, (w / n if n else 0), (pnl / staked if staked else 0), pnl
+
+
+def by_category(lead_hours, spread=0.0):
+    rows = json.load(open(os.path.join(DATA, f"flsb_lead{lead_hours}.json")))
+    from collections import defaultdict
+    g = defaultdict(list)
+    for r in rows:
+        g[categorize(r["q"])].append(r)
+    print(f"[flsb] {len(rows)} markets @ {lead_hours}h lead, spread cost={spread:.3f}\n")
+    print(f"{'category':<9}{'mkts':>5} |  back UNDERDOG (longshot side)")
+    print(f"{'':9}{'':>5} |   n   win    ROI     PnL")
+    print("-" * 46)
+    for c in ['sports', 'crypto', 'politics', 'econ', 'other']:
+        n, wr, roi, pnl = _roi(g[c], lambda r: "no" if r["price"] > 0.5 else "yes", spread)
+        print(f"{c:<9}{len(g[c]):>5} | {n:>3} {wr:5.0%} {roi:+7.1%} {pnl:+7.1f}")
 
 
 def analyze(lead_hours):
@@ -160,6 +220,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--analyze", action="store_true")
+    ap.add_argument("--by-category", action="store_true")
+    ap.add_argument("--spread", type=float, default=0.0, help="half-spread entry cost")
     ap.add_argument("--n", type=int, default=1500)
     ap.add_argument("--min-vol", type=float, default=50000)
     ap.add_argument("--lead", type=int, default=48)
@@ -168,6 +230,8 @@ def main():
         collect(args.n, args.min_vol, args.lead)
     if args.analyze:
         analyze(args.lead)
+    if args.by_category:
+        by_category(args.lead, args.spread)
 
 
 if __name__ == "__main__":

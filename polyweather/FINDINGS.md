@@ -99,3 +99,43 @@ live book we sampled (Seoul) was already sharp, i.e. someone is doing this.
    logic live against the order book, not cached last-trade.
 2. Measure **executable** depth (best bid/ask, not last trade) on low-volume cities.
 3. Account for fees + the ~2% vig in every P&L before believing any ROI.
+
+## Experiment 3 — favorite-longshot bias, 1200 resolved binary markets
+
+Cross-sectional, all categories, YES price at 48h before resolution vs realized
+outcome (`favlongshot.py`). Each market one independent point.
+
+- **Market-wide:** no clean favorite-longshot bias; if anything a weak *reverse*
+  tilt (longshots slightly underpriced). Back-favorites −3.5% ROI, back-longshots
+  +10.9% at mid — but inflated by politics variance.
+- **By category (ROI at mid → at 1¢ spread):**
+  - sports (n=485): +4.2% → **−1.5%**
+  - crypto (n=95): +8.0% → +2.8%
+  - other (n=376): +7.7% → +5.2%
+  - politics (n=158): +55% (2024-election variance, not edge)
+  - econ (n=86): favorites +5% (n=25, noise)
+- **Verdict:** the apparent edge lives *entirely inside the bid-ask spread*. A
+  single cent of execution cost erases sports/crypto. These markets are
+  efficient to within their spread.
+
+## Overall conclusion (5 strategies tested)
+
+| strategy | result |
+|---|---|
+| temp forecast skill (GFS/ECMWF) | priced in; market beats model at short lead |
+| temp overround arbitrage | stale-price mirage; live book ~2% vig, no arb |
+| temp convergence | unvalidated noise on bad prices |
+| temp nowcast (observation) | sound idea, needs station METAR not ERA5 |
+| favorite-longshot (1200 mkts) | sub-spread; dies at 1¢ cost |
+
+**No simple, free, spread-taking strategy survives execution costs.** The viral
+tweet does not reproduce. In a near-efficient market you cannot win by *taking*
+liquidity (you pay the vig); the structural profit belongs to whoever *makes*
+it. The real edges, all requiring more than a free API:
+1. **Market-making** — earn the spread/vig instead of paying it (the ~2% is the
+   maker's profit). Needs inventory & adverse-selection management; competes with
+   pro bots.
+2. **Speed on new information** — beat the market to news (live METAR, breaking
+   events). Infrastructure, not modelling.
+3. **Illiquid micro-markets** — wide spreads, real mispricing, but tiny capacity;
+   you become the liquidity provider.
