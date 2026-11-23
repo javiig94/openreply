@@ -70,11 +70,23 @@ Read-only: it ALERTS, it does not trade.
 1. **Faster sources than RSS** — *partly done* (HN/Algolia added). Next: primary
    sources for discrete events (SEC EDGAR, sports data APIs, gov pages).
 2. **Direction inference** — **done** (`direction.py`, lexicon/rule based).
-3. **Check the market hasn’t already moved** — *to do*: compare live price to the
-   pre-headline level; only trade the un-repriced residual.
+3. **Check the market hasn’t already moved** — **done** (`residual()`): compares
+   live price to a pre-headline baseline AND the distance to the implied extreme;
+   tags EARLY 🟢 / PARTIAL 🟡 / LATE 🟡 / PRICED-IN 🔴. Only EARLY is a real signal.
 4. **Auto-execute** via CLOB within the window, size capped by book depth — *to do*.
-5. **Backtest direction+timing on logged alerts** — run `--watch` for days to
-   build `data/alerts.log`, then score inferred side vs realized resolution.
+5. **Backtest direction+timing** — **done** (`score_alerts.py`): reads the alert
+   log, waits for markets to resolve, scores inferred side vs realized outcome and
+   simulated PnL, split by residual status. Run `--watch` for days first.
+
+### Running the validation
+```bash
+python newsedge.py --watch 30     # accumulate data/alerts.log (needs days)
+python score_alerts.py --only-actionable --min-conf 0.6   # once markets resolve
+```
+Caveat: this container is ephemeral — `data/` does not survive it. For a real
+multi-day dataset, run `--watch` on a persistent machine, or commit the log
+periodically. Direction accuracy >50% means the signal predicts resolution;
+positive ROI on EARLY alerts is the part that would actually pay.
 
 ## Why this is the most promising angle we found
 Everything else died to execution cost (Polymarket taker spread) or was priced
