@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+data/*.txt
+data/*.json
+data/*.csv
+.venv/
