@@ -1,0 +1,19 @@
+[Unit]
+Description=newsedge — real-time news -> Polymarket signal watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# edit User and paths to match your box
+User=newsedge
+WorkingDirectory=/opt/newsedge/newsedge
+ExecStart=/opt/newsedge/venv/bin/python -u newsedge.py --watch 30
+Restart=always
+RestartSec=10
+# keep the alert log append-only across restarts (it lives in ./data/)
+StandardOutput=append:/var/log/newsedge.out
+StandardError=append:/var/log/newsedge.err
+
+[Install]
+WantedBy=multi-user.target

@@ -88,6 +88,31 @@ multi-day dataset, run `--watch` on a persistent machine, or commit the log
 periodically. Direction accuracy >50% means the signal predicts resolution;
 positive ROI on EARLY alerts is the part that would actually pay.
 
+## Deploy on a VPS (Hetzner) — run it 24/7
+
+This is a data collector that must run continuously (news breaks at any hour), so
+a VPS beats a PC that sleeps/reboots. It is plain Python + `requests`, trivial to
+host. On a fresh Debian/Ubuntu box, as root:
+
+```bash
+bash deploy/setup.sh https://github.com/<you>/<repo>.git
+```
+
+That creates a user, venv, installs deps, **checks Polymarket API reachability
+from the box**, and installs a systemd service (`--watch 30`, auto-restart,
+append-only log at `data/alerts.log`). Follow it with `systemctl status newsedge`
+and `tail -f .../data/alerts.log`.
+
+**Two honest caveats before you rely on it:**
+- **Geolocation.** The setup script curls the Polymarket API and prints the HTTP
+  code — the *data* API should work from a German/Finnish Hetzner IP. But
+  Polymarket **restricts trading** by jurisdiction/KYC (US persons blocked, and
+  others). Collecting data is one thing; placing real orders (piece #4) is on you
+  to check for your location. This tool does not trade.
+- **Persistence.** `data/alerts.log` is append-only and survives restarts on the
+  VPS, but back it up (a daily `git commit` cron, or `rsync`) so a rebuild doesn't
+  wipe your dataset.
+
 ## Why this is the most promising angle we found
 Everything else died to execution cost (Polymarket taker spread) or was priced
 in. Here the market structurally **lags**, and the lag is measured, not assumed.
